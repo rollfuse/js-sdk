@@ -1,10 +1,41 @@
-# contracts
+# @growth-ops/contracts
 
-Placeholder for shared, versioned API/event contracts (e.g. generated types
-from `apps/api/openapi/openapi.yaml`).
+TypeScript types generated from `apps/api/openapi/openapi.yaml`, for
+`@growth-ops/sdk-js` and any other TypeScript client that needs the
+platform's request/response shapes without hand-writing them.
 
-No implementation exists yet. Do not add speculative code here; the OpenAPI
-document at `apps/api/openapi/openapi.yaml` is currently the single source of
-truth for the API contract. This package will be populated when a second
-consumer (an SDK or another service) needs a generated, versioned artifact
-instead of hand-written typed clients like `apps/web/src/lib/api-client.ts`.
+## What's here
+
+- `src/openapi.d.ts`: the full, mechanically generated output of
+  [`openapi-typescript`](https://openapi-ts.dev/) run against
+  `apps/api/openapi/openapi.yaml`. Do not hand-edit this file.
+- `src/index.ts`: a small, stably-named set of re-exports of the schemas
+  consumers actually need (`Configuration`, `FlagConfig`,
+  `EvaluationResult`, `ExposureEvent`, etc.), so nothing outside this
+  package has to reach into `openapi.d.ts`'s generated
+  `components["schemas"][...]` path structure directly.
+
+## Regenerating
+
+Generation is a manual, reviewed step — it does not run automatically in
+CI or as part of any other package's build, matching this repo's existing
+discipline around explicit, reviewed schema changes (see
+`docs/adr/` for the precedent on migrations). After changing
+`apps/api/openapi/openapi.yaml`:
+
+```bash
+npm run generate   # rewrites src/openapi.d.ts
+```
+
+Then update `src/index.ts` if the change added or renamed a schema this
+package re-exports, and commit both files together with the OpenAPI change
+that motivated them.
+
+## Building
+
+```bash
+npm install
+npm run build       # emits dist/ (gitignored, rebuilt by consumers)
+npm run typecheck
+npm run lint
+```
