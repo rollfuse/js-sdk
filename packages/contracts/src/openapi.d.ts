@@ -1184,6 +1184,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/environments/{environment_id}/observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List one subject's Observations across every MetricDefinition within an Environment
+         * @description Requires a session for a Member holding metrics:manage. Unlike the MetricDefinition-scoped listing above, this endpoint has no meaning without subject_key (it is required, not optional) and returns Observations recorded against ANY MetricDefinition in the Environment for that subject, ordered by occurrence time. Backs the feature flag observability dashboard's subject-level drill-down. An Environment outside the caller's own Organization is rejected identically to an unknown Environment.
+         */
+        get: operations["listObservationsForSubject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/environments/{environment_id}/acquisition-contexts": {
         parameters: {
             query?: never;
@@ -6682,7 +6702,8 @@ export interface operations {
                      *           "environment_id": "018f2f3a-3000-7000-9c3a-1f2b3c4d5e6f",
                      *           "value": 0.05,
                      *           "occurred_at": "2026-01-01T00:00:00Z",
-                     *           "correlation_id": "018f2f3a-5000-7000-9c3a-1f2b3c4d5e6f"
+                     *           "correlation_id": "018f2f3a-5000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "subject_key": "user_1"
                      *         }
                      *       ]
                      *     }
@@ -7933,6 +7954,8 @@ export interface operations {
                 from?: string;
                 /** @description Exclusive upper bound on occurred_at (RFC3339). */
                 to?: string;
+                /** @description When present, restricts the result to ExposureEvents recorded for that subject key. */
+                subject_key?: string;
                 limit?: number;
                 offset?: number;
             };
@@ -8272,6 +8295,8 @@ export interface operations {
                 from?: string;
                 /** @description Exclusive upper bound on occurred_at (RFC3339). */
                 to?: string;
+                /** @description When present, restricts the result to Observations recorded for that subject key. */
+                subject_key?: string;
                 limit?: number;
                 offset?: number;
             };
@@ -8299,7 +8324,8 @@ export interface operations {
                      *           "environment_id": "018f2f3a-3000-7000-9c3a-1f2b3c4d5e6f",
                      *           "value": 0.02,
                      *           "occurred_at": "2026-01-01T00:00:00Z",
-                     *           "correlation_id": "018f2f3a-b000-7000-9c3a-1f2b3c4d5e6f"
+                     *           "correlation_id": "018f2f3a-b000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "subject_key": "user_1"
                      *         }
                      *       ]
                      *     }
@@ -8463,6 +8489,101 @@ export interface operations {
                 };
             };
             /** @description The referenced MetricDefinition does not exist, or belongs to a different Project than the Credential's own. Non-disclosing: the response never distinguishes these cases. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "metric_definition_not_found",
+                     *         "message": "Metric definition or environment was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listObservationsForSubject: {
+        parameters: {
+            query: {
+                subject_key: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Observations found (possibly empty). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "observations": [
+                     *         {
+                     *           "id": "018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "metric_definition_id": "018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "environment_id": "018f2f3a-3000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "value": 0.02,
+                     *           "occurred_at": "2026-01-01T00:00:00Z",
+                     *           "correlation_id": "018f2f3a-b000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "subject_key": "user_1"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ObservationList"];
+                };
+            };
+            /** @description subject_key was missing, or limit/offset was malformed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "observations_validation_error",
+                     *         "message": "subject_key is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold metrics:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Environment was not found, or belongs to another Organization. Non-disclosing: the response never distinguishes these cases. */
             404: {
                 headers: {
                     [name: string]: unknown;
