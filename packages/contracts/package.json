@@ -23,10 +23,10 @@
     "lint": "eslint ."
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "eslint": "^10.8.0",
-    "openapi-typescript": "^7.13.0",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.65.0"
+    "@eslint/js": "10.0.1",
+    "eslint": "10.8.0",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.65.0"
   }
 }
