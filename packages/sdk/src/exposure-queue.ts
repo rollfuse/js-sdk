@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ExposureEventSubmission } from "@growth-ops/contracts";
+import type { ExposureEventSubmission } from "@rollfuse/contracts";
 
 const DEFAULT_CAPACITY = 1_000;
 const DEFAULT_BATCH_SIZE = 100;
@@ -16,7 +16,7 @@ export interface ExposureQueueOptions {
   onExposureSubmitError?: (error: unknown) => void;
 }
 
-/** What `GrowthOpsClient.evaluate` supplies per rule-matched evaluation. */
+/** What `RollfuseClient.evaluate` supplies per rule-matched evaluation. */
 export interface QueuedExposure {
   flagKey: string;
   subjectKey: string;

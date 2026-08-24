@@ -1,11 +1,11 @@
-import type { Configuration, EvaluationResult } from "@growth-ops/contracts";
+import type { Configuration, EvaluationResult } from "@rollfuse/contracts";
 import { ConfigurationClient } from "./configuration-client.js";
 import { evaluateFlag } from "./evaluate.js";
 import { ConfigNotReadyError, CredentialRequiredError, FlagNotFoundError } from "./errors.js";
 import { ExposureQueue } from "./exposure-queue.js";
 
-export interface GrowthOpsClientOptions {
-  /** The platform API's base URL, e.g. "https://api.growth-ops.example". */
+export interface RollfuseClientOptions {
+  /** The platform API's base URL, e.g. "https://api.rollfuse.com". */
   baseUrl: string;
   /** The Service Credential's bearer token. Required — never read from `process.env`. */
   credential: string;
@@ -57,11 +57,11 @@ export interface EvaluateAllOptions {
  * `openspec/specs/sdk-js/spec.md` for the full behavioral contract and
  * `add-sdk-js/design.md` for the design rationale.
  */
-export class GrowthOpsClient {
+export class RollfuseClient {
   private readonly configurationClient: ConfigurationClient;
   private readonly exposureQueue: ExposureQueue;
 
-  constructor(options: GrowthOpsClientOptions) {
+  constructor(options: RollfuseClientOptions) {
     if (!options.credential) {
       throw new CredentialRequiredError();
     }

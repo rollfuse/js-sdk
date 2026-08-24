@@ -1,4 +1,4 @@
-import type { EvaluationResult, FlagConfig } from "@growth-ops/contracts";
+import type { EvaluationResult, FlagConfig } from "@rollfuse/contracts";
 import { bucket, BUCKET_MODULUS } from "./bucketing.js";
 
 /**

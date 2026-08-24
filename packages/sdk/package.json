@@ -1,5 +1,5 @@
 {
-  "name": "@growth-ops/sdk-js",
+  "name": "@rollfuse/sdk-js",
   "version": "0.1.0",
   "private": true,
   "description": "Node.js SDK that evaluates Growth Operations Platform feature flags locally against cached, versioned configuration (ADR 0004: Evaluate Flags Locally in SDKs).",
@@ -32,7 +32,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@growth-ops/contracts": "file:../contracts"
+    "@rollfuse/contracts": "file:../contracts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

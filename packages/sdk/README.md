@@ -1,6 +1,11 @@
-# @growth-ops/sdk-js
+# @rollfuse/sdk-js
 
-The Node.js SDK for the Growth Operations Platform: evaluates feature flags
+> **Renamed from `@growth-ops/sdk-js`.** The package identifier and the
+> exported `GrowthOpsClient` class changed name — `GrowthOpsClient` is now
+> `RollfuseClient`. The client's behavior did not change; update your
+> `package.json` dependency, imports, and the constructor name.
+
+The Node.js SDK for rollfuse: evaluates feature flags
 locally against cached, versioned configuration (ADR 0004: Evaluate Flags
 Locally in SDKs), instead of calling the API synchronously on every
 evaluation.
@@ -13,16 +18,16 @@ contract.
 ## Install
 
 ```bash
-npm install @growth-ops/sdk-js
+npm install @rollfuse/sdk-js
 ```
 
 ## Usage
 
 ```ts
-import { GrowthOpsClient } from "@growth-ops/sdk-js";
+import { RollfuseClient } from "@rollfuse/sdk-js";
 
-const client = new GrowthOpsClient({
-  baseUrl: "https://api.growth-ops.example",
+const client = new RollfuseClient({
+  baseUrl: "https://api.rollfuse.com",
   credential: process.env.GROWTH_OPS_CREDENTIAL!, // read wherever you keep secrets; the SDK never reads it itself
 });
 
@@ -74,6 +79,6 @@ npm test
 npm run build   # emits dist/ (gitignored), a dual ESM+CJS build via tsup
 ```
 
-Depends on `@growth-ops/contracts` (a local sibling package under
+Depends on `@rollfuse/contracts` (a local sibling package under
 `packages/contracts`) for its request/response types — build that package
 first if working outside `make build`/`make test`.

@@ -1,4 +1,4 @@
-import type { Configuration } from "@growth-ops/contracts";
+import type { Configuration } from "@rollfuse/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfigurationClient } from "../src/configuration-client.js";
 

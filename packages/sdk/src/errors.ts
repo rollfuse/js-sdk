@@ -1,8 +1,8 @@
-/** Thrown when `GrowthOpsClient` is constructed without a `credential`. */
+/** Thrown when `RollfuseClient` is constructed without a `credential`. */
 export class CredentialRequiredError extends Error {
   constructor() {
     super(
-      "GrowthOpsClient requires an explicit `credential` option; it is never read from an environment variable or any other ambient source.",
+      "RollfuseClient requires an explicit `credential` option; it is never read from an environment variable or any other ambient source.",
     );
     this.name = "CredentialRequiredError";
   }

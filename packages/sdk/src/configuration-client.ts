@@ -1,4 +1,4 @@
-import type { Configuration } from "@growth-ops/contracts";
+import type { Configuration } from "@rollfuse/contracts";
 
 /** Default interval between successful-poll refreshes. */
 const DEFAULT_REFRESH_INTERVAL_MS = 30_000;
@@ -8,7 +8,7 @@ const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
 
 export interface ConfigurationClientOptions {
-  /** The platform API's base URL, e.g. "https://api.growth-ops.example". */
+  /** The platform API's base URL, e.g. "https://api.rollfuse.com". */
   baseUrl: string;
   /** The Service Credential's bearer token. */
   credential: string;

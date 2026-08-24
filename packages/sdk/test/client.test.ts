@@ -1,6 +1,6 @@
-import type { Configuration } from "@growth-ops/contracts";
+import type { Configuration } from "@rollfuse/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GrowthOpsClient } from "../src/client.js";
+import { RollfuseClient } from "../src/client.js";
 import { ConfigNotReadyError, CredentialRequiredError, FlagNotFoundError } from "../src/errors.js";
 
 const validConfig: Configuration = {
@@ -41,10 +41,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("GrowthOpsClient", () => {
+describe("RollfuseClient", () => {
   describe("Explicit Credential Configuration", () => {
     it("throws CredentialRequiredError when constructed without a credential", () => {
-      expect(() => new GrowthOpsClient({ baseUrl: "http://api.test", credential: "" })).toThrow(
+      expect(() => new RollfuseClient({ baseUrl: "http://api.test", credential: "" })).toThrow(
         CredentialRequiredError,
       );
     });
@@ -54,7 +54,7 @@ describe("GrowthOpsClient", () => {
       process.env.GROWTH_OPS_CREDENTIAL = "svc_from_env.secret";
 
       try {
-        expect(() => new GrowthOpsClient({ baseUrl: "http://api.test", credential: "" })).toThrow(
+        expect(() => new RollfuseClient({ baseUrl: "http://api.test", credential: "" })).toThrow(
           CredentialRequiredError,
         );
       } finally {
@@ -70,7 +70,7 @@ describe("GrowthOpsClient", () => {
   describe("Safe Fallback Behavior", () => {
     it("returns the fallback value when no Configuration has been fetched yet", () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
-      const client = new GrowthOpsClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
 
       // start() not called/awaited: no Configuration is cached yet.
       const result = client.evaluate("user_1", "checkout-redesign", { fallback: "fallback-value" });
@@ -82,21 +82,21 @@ describe("GrowthOpsClient", () => {
 
     it("throws ConfigNotReadyError when no Configuration is cached and no fallback is supplied", () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
-      const client = new GrowthOpsClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
 
       expect(() => client.evaluate("user_1", "checkout-redesign")).toThrow(ConfigNotReadyError);
     });
 
     it("evaluateAll throws ConfigNotReadyError when no Configuration is cached", () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
-      const client = new GrowthOpsClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
 
       expect(() => client.evaluateAll("user_1")).toThrow(ConfigNotReadyError);
     });
 
     it("throws FlagNotFoundError for an unknown flag key once Configuration is cached, absent a fallback", async () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
-      const client = new GrowthOpsClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
 
       await client.start();
 
@@ -113,7 +113,7 @@ describe("GrowthOpsClient", () => {
         .mockResolvedValueOnce(jsonResponse(validConfig))
         .mockRejectedValue(new Error("network down"));
 
-      const client = new GrowthOpsClient({
+      const client = new RollfuseClient({
         baseUrl: "http://api.test",
         credential: "cred",
         refreshIntervalMs: 5_000,
@@ -136,7 +136,7 @@ describe("GrowthOpsClient", () => {
   describe("Deterministic Local Evaluation", () => {
     it("evaluate does not perform a network request", async () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
-      const client = new GrowthOpsClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
 
       await client.start();
 
@@ -151,7 +151,7 @@ describe("GrowthOpsClient", () => {
 
     it("evaluateAll returns a result for every flag in the Configuration", async () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
-      const client = new GrowthOpsClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
 
       await client.start();
 
@@ -176,7 +176,7 @@ describe("GrowthOpsClient", () => {
         return configFetch(url, init);
       });
 
-      const client = new GrowthOpsClient({
+      const client = new RollfuseClient({
         baseUrl: "http://api.test",
         credential: "cred",
         exposureBatchSize: 1,
@@ -215,7 +215,7 @@ describe("GrowthOpsClient", () => {
         return Promise.resolve(jsonResponse(validConfig));
       });
 
-      const client = new GrowthOpsClient({
+      const client = new RollfuseClient({
         baseUrl: "http://api.test",
         credential: "cred",
         exposureBatchSize: 1,
@@ -244,7 +244,7 @@ describe("GrowthOpsClient", () => {
         return Promise.resolve(jsonResponse(validConfig));
       });
 
-      const client = new GrowthOpsClient({
+      const client = new RollfuseClient({
         baseUrl: "http://api.test",
         credential: "cred",
         exposureBatchSize: 1,
@@ -270,7 +270,7 @@ describe("GrowthOpsClient", () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
       const onExposureDropped = vi.fn();
 
-      const client = new GrowthOpsClient({
+      const client = new RollfuseClient({
         baseUrl: "http://api.test",
         credential: "cred",
         exposureQueueCapacity: 1,

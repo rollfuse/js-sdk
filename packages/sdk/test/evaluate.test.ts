@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { FlagConfig } from "@growth-ops/contracts";
+import type { FlagConfig } from "@rollfuse/contracts";
 import { describe, expect, it } from "vitest";
 import { bucket } from "../src/bucketing.js";
 import { evaluateFlag } from "../src/evaluate.js";
