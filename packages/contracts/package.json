@@ -1,8 +1,8 @@
 {
-  "name": "@growth-ops/contracts",
+  "name": "@rollfuse/contracts",
   "version": "0.1.0",
   "private": true,
-  "description": "TypeScript types generated from apps/api/openapi/openapi.yaml, for consumption by @growth-ops/sdk-js and other TypeScript clients.",
+  "description": "TypeScript types generated from apps/api/openapi/openapi.yaml, for consumption by @rollfuse/sdk-js and other TypeScript clients.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

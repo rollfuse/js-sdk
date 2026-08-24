@@ -1,7 +1,12 @@
-# @growth-ops/contracts
+# @rollfuse/contracts
+
+> **Renamed from `@growth-ops/contracts`.** The package identifier changed;
+> the API it wraps did not. Update your `package.json` dependency and
+> imports from `@growth-ops/contracts` to `@rollfuse/contracts` — no other
+> code change is required.
 
 TypeScript types generated from `apps/api/openapi/openapi.yaml`, for
-`@growth-ops/sdk-js` and any other TypeScript client that needs the
+`@rollfuse/sdk-js` and any other TypeScript client that needs the
 platform's request/response shapes without hand-writing them.
 
 ## What's here

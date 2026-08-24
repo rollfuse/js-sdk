@@ -1,7 +1,7 @@
 import type { components } from "./openapi.js";
 
 /**
- * Curated, stably-named re-exports of the OpenAPI schemas `@growth-ops/sdk-js`
+ * Curated, stably-named re-exports of the OpenAPI schemas `@rollfuse/sdk-js`
  * (and other TypeScript consumers) need, so callers never have to reach into
  * `openapi.d.ts`'s generated `components["schemas"][...]` path structure
  * directly. Regenerate `src/openapi.d.ts` via `npm run generate` when
