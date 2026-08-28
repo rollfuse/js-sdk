@@ -1,6 +1,6 @@
 {
   "name": "@rollfuse/contracts",
-  "version": "0.1.0",
+  "version": "0.2.2",
   "description": "TypeScript types generated from apps/api/openapi/openapi.yaml, for consumption by @rollfuse/sdk-js and other TypeScript clients.",
   "type": "module",
   "publishConfig": {
@@ -15,20 +15,26 @@
     }
   },
   "files": [
-    "dist",
-    "src/openapi.d.ts"
+    "dist"
   ],
   "scripts": {
-    "generate": "openapi-typescript ../../apps/api/openapi/openapi.yaml -o src/openapi.d.ts",
-    "build": "tsc -p tsconfig.json",
+    "generate": "openapi-typescript ../../apps/api/openapi/openapi.yaml -o src/openapi.d.ts && node scripts/extract-schemas.mjs",
+    "build": "tsc -p tsconfig.json && cp src/openapi.d.ts dist/openapi.d.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ajv": "8.20.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@types/node": "26.4.0",
     "eslint": "10.8.1",
+    "js-yaml": "5.4.1",
     "openapi-typescript": "7.13.0",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.67.0"
+    "typescript-eslint": "8.67.0",
+    "vitest": "4.1.10"
   }
 }

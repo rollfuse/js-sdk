@@ -55,7 +55,7 @@ export interface paths {
         put?: never;
         /**
          * Create an organization
-         * @description Development-foundation endpoint, unauthenticated until the authentication change lands.
+         * @description Unauthenticated — the one endpoint with no possible authenticated caller, since no Member or credential can exist before an Organization does. The response includes a single-use identity-provider bootstrap credential, returned in plaintext exactly once, used to configure the Organization's OIDC provider via PUT /v1/organizations/{organization_id}/identity-provider before any Member exists.
          */
         post: operations["createOrganization"];
         delete?: never;
@@ -73,11 +73,31 @@ export interface paths {
         };
         /**
          * Get an organization by ID
-         * @description Development-foundation endpoint, unauthenticated until the authentication change lands.
+         * @description Requires a session for a Member holding organizations:manage. An `organization_id` other than the caller's own Organization is rejected identically to an unknown one.
          */
         get: operations["getOrganization"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/leads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Capture a marketing lead
+         * @description Unauthenticated — a prospect submitting interest through the public marketing site has no session. Rate limited per client IP. Persists a standalone Lead record only; it does not create an Organization, Project, Environment or Member.
+         */
+        post: operations["createLead"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1304,6 +1324,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{organization_id}/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an Organization's MemberInvites
+         * @description Requires a session for a Member holding members:manage. Scoped to the caller's own session-bound Organization. Never includes token material.
+         */
+        get: operations["listInvites"];
+        put?: never;
+        /**
+         * Invite a person to join an Organization by email
+         * @description Requires a session for a Member holding members:manage. Issues a single-use MemberInvite expiring in 7 days and emails its accept link to the invited address.
+         *
+         *     No Member is created here: provisioning is deferred to acceptance. The Organization is always the caller's own session-bound one — organization_id in the path is only compared against it, and a path id naming a different Organization is answered exactly like an unknown one.
+         */
+        post: operations["inviteMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{organization_id}/invites/{invite_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a pending MemberInvite
+         * @description Requires a session for a Member holding members:manage. Marks a still pending invite revoked so it can never be accepted.
+         *
+         *     An invite belonging to another Organization is rejected identically to an invite id that does not exist — the two cases are deliberately indistinguishable.
+         */
+        delete: operations["revokeInvite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a MemberInvite and provision the invited Member
+         * @description Unauthenticated by design: the invite token is itself the credential, the same posture as magic-link consumption, so no session or permission applies — the token-hash lookup is what proves authorization.
+         *
+         *     Atomically consumes the invite — succeeding only once, even under concurrent attempts — and creates a Member in the inviting Organization with no automatic role. It issues no session; the new Member signs in afterward through their Organization's normal login path. Every rejection reason (unknown, expired, revoked, already accepted) is answered identically. Rate-limited per client IP.
+         */
+        post: operations["acceptInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{organization_id}/identity-provider": {
         parameters: {
             query?: never;
@@ -1362,6 +1452,70 @@ export interface paths {
         get: operations["completeLogin"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/magic-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request a magic-link login email
+         * @description Emails a single-use, 15-minute login link to an existing Member's address. It never provisions a new Organization or Member: an email matching no Member is a silent no-op.
+         *
+         *     The response is deliberately identical whether or not the email matches an existing Member, so this endpoint cannot be used to enumerate accounts. Rate-limited both per client IP and, independently, per recipient email address.
+         */
+        post: operations["requestMagicLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/magic-link/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether a magic-link token is still valid
+         * @description Read-only: reports whether token exists, is unexpired and unused, WITHOUT consuming it or creating a session. Safe to call repeatedly, including by an automated corporate email-security link scanner that prefetches the emailed link before a human clicks it — the confirmation page calls this to decide what to render, then calls the confirm endpoint below only on an explicit user action.
+         */
+        get: operations["peekMagicLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/magic-link/{token}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Consume a magic-link token and issue a session
+         * @description Atomically consumes token — succeeding only once, even under concurrent attempts — and issues a Session for the Member it resolves to. Rejected if the token is unknown, expired, already used, or resolves to a disabled Member.
+         *
+         *     Session delivery follows the same Accept-header negotiation as `/v1/auth/callback`: a browser gets an `HttpOnly`, `SameSite=Lax` cookie plus a 302 redirect to the web app; every other caller gets the plaintext token once in the 200 JSON body. No failure path sets a session cookie.
+         */
+        post: operations["confirmMagicLink"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1652,6 +1806,66 @@ export interface paths {
         patch: operations["deactivateScimUser"];
         trace?: never;
     };
+    "/v1/organizations/{organization_id}/billing/subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an organization's current subscription
+         * @description Requires a session for a Member holding billing:manage. An `organization_id` other than the caller's own Organization is rejected identically to an unknown one. An Organization with no Subscription yet (one whose default-plan enrollment failed, or one predating enrollment) is not an error: the response omits `subscription`.
+         */
+        get: operations["getOrganizationSubscription"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{organization_id}/billing/subscription/plan-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change an organization's plan and price
+         * @description Requires a session for a Member holding billing:manage. Both `plan_version_id` and `price_id` are required: a plan version may carry several prices (e.g. monthly and annual), so the target price is not derivable from the plan version alone. An upgrade applies immediately, prorated; a downgrade is agreed now and applied at the end of the current billing cycle. Upgrade/downgrade is classified by comparing entitlement grants, never by price, so switching billing interval on the same plan version applies immediately.
+         */
+        post: operations["changeOrganizationPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the published plan catalog
+         * @description Returns every PlanDefinition's current PlanVersion, its entitlement grants and every associated price. The catalog is platform-wide, not Organization-scoped — it is identical for every prospective subscriber and discloses nothing about any Organization — so it requires only a valid session, with no billing:manage check.
+         */
+        get: operations["listBillingPlans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1701,6 +1915,28 @@ export interface components {
             /** @description The pagination offset actually applied. */
             offset: number;
         };
+        CreateLeadRequest: {
+            /** Format: email */
+            email: string;
+            tier?: string;
+            company_name?: string;
+            /**
+             * @description The marketing-site locale the lead was submitted from, inferred by the client from the page's route.
+             * @enum {string}
+             */
+            locale: "en" | "pt-br";
+        };
+        Lead: {
+            id: string;
+            /** Format: email */
+            email: string;
+            tier?: string;
+            company_name?: string;
+            /** @enum {string} */
+            locale: "en" | "pt-br";
+            /** Format: date-time */
+            captured_at: string;
+        };
         CreateOrganizationRequest: {
             name: string;
             slug: string;
@@ -1717,6 +1953,20 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        /** @description An Organization plus its single-use identity-provider bootstrap credential, returned in plaintext exactly once and never retrievable again. */
+        CreateOrganizationResponse: {
+            id: string;
+            name: string;
+            slug: string;
+            /** @enum {string} */
+            region: "us" | "eu";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** @description Single-use, 30-minute credential authorizing exactly one call to PUT /v1/organizations/{organization_id}/identity-provider before the Organization has any Member. */
+            identity_provider_bootstrap_token: string;
         };
         CreateProjectRequest: {
             name: string;
@@ -2174,14 +2424,14 @@ export interface components {
             buckets: components["schemas"]["AcquisitionChannelBucket"][];
         };
         IssueCredentialRequest: {
-            scopes: "config:read"[];
+            scopes: ("config:read" | "metrics:write" | "acquisition:write" | "identity:write")[];
         };
         Credential: {
             id: string;
             organization_id: string;
             project_id: string;
             environment_id: string;
-            scopes: "config:read"[];
+            scopes: ("config:read" | "metrics:write" | "acquisition:write" | "identity:write")[];
             /** @enum {string} */
             status: "active" | "revoked";
             /** @description The plaintext credential token. Returned only in the issuance response; no other response ever includes it. */
@@ -2219,6 +2469,41 @@ export interface components {
             status: "active" | "disabled";
             roles: string[];
         };
+        /** @description Carries the invited email and nothing else. There is deliberately no organization_id field: an invite is always issued into the caller's own session-bound Organization, so the body cannot express a cross-tenant issuance. Unknown fields are rejected. */
+        InviteMemberRequest: {
+            /** Format: email */
+            email: string;
+        };
+        /** @description A MemberInvite projected for administration. It has no token field by design: only the emailed link ever carries the accept token, and only a one-way hash of it is persisted. */
+        MemberInviteResponse: {
+            id: string;
+            /** Format: email */
+            email: string;
+            /**
+             * @description The status an operator must act on. A pending invite whose expiry has lapsed is reported as expired even though the stored row still says pending.
+             * @enum {string}
+             */
+            status: "pending" | "accepted" | "revoked" | "expired";
+            inviter_member_id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            accepted_at: string | null;
+            /** Format: date-time */
+            revoked_at: string | null;
+        };
+        MemberInviteListResponse: {
+            invites: components["schemas"]["MemberInviteResponse"][];
+        };
+        /** @description The Member provisioned by a successful acceptance. It has no session-token field: accepting an invite provisions a Member, it does not sign anybody in. */
+        AcceptInviteResponse: {
+            member_id: string;
+            organization_id: string;
+            /** Format: email */
+            email: string;
+        };
         CompleteLoginResponse: {
             member_id: string;
             organization_id: string;
@@ -2227,6 +2512,17 @@ export interface components {
             session_token: string;
             /** Format: date-time */
             expires_at: string;
+        };
+        RequestMagicLinkRequest: {
+            /** Format: email */
+            email: string;
+        };
+        /** @description Deliberately identical whether or not the email matched an existing Member — see requestMagicLink's description. */
+        RequestMagicLinkResponse: {
+            message: string;
+        };
+        PeekMagicLinkResponse: {
+            valid: boolean;
         };
         /** @description The identity behind a presented session. It has no session-token field by design, so the endpoint cannot leak the token it is looked up by. */
         CurrentSessionResponse: {
@@ -2332,7 +2628,7 @@ export interface components {
             organization_id: string;
             project_id: string;
             environment_id: string;
-            scopes: "config:read"[];
+            scopes: ("config:read" | "metrics:write" | "acquisition:write" | "identity:write")[];
             /** @enum {string} */
             status: "active" | "revoked";
             /** Format: date-time */
@@ -2632,6 +2928,76 @@ export interface components {
         ErrorEnvelope: {
             error: components["schemas"]["ApiError"];
         };
+        BillingPlan: {
+            /** @description The catalog entry's stable key (e.g. "starter", "pro"). */
+            key: string;
+            display_name: string;
+            description: string;
+            /** @description The specific immutable PlanVersion in play. A Subscription is always pinned to a version, never to the catalog entry, so editing the catalog never silently changes an existing subscriber's terms. */
+            plan_version_id: string;
+            version: number;
+        };
+        BillingGrant: {
+            /** @enum {string} */
+            resource_key: "project" | "environment" | "feature_flag" | "segment" | "guardrail" | "experiment" | "webhook_endpoint";
+            /** @enum {string} */
+            policy_kind: "unlimited" | "finite";
+            /** @description Present only when policy_kind is "finite". */
+            policy_limit?: number;
+        };
+        BillingPrice: {
+            id: string;
+            /**
+             * Format: int64
+             * @description An integer amount in the smallest unit of currency (e.g. cents), never a float. May be 0 — the platform's default plan is a $0 plan.
+             */
+            amount: number;
+            currency: string;
+            /** @enum {string} */
+            interval: "month" | "year";
+        };
+        ScheduledPlanChange: {
+            plan: components["schemas"]["BillingPlan"];
+            /**
+             * Format: date-time
+             * @description When the agreed change takes financial and entitlement effect — the end of the current billing cycle, for a downgrade.
+             */
+            effective_at: string;
+        };
+        Subscription: {
+            id: string;
+            /** @enum {string} */
+            status: "trialing" | "active" | "past_due" | "suspended" | "canceled";
+            plan: components["schemas"]["BillingPlan"];
+            grants: components["schemas"]["BillingGrant"][];
+            /** @description The specific price of the plan version this Organization is billed under. Absent when the plan version carries no price. */
+            price?: components["schemas"]["BillingPrice"];
+            /** @description Absent when no plan change is pending. */
+            scheduled_plan_change?: components["schemas"]["ScheduledPlanChange"];
+            /** Format: date-time */
+            cycle_end_at: string;
+        };
+        OrganizationSubscription: {
+            organization_id: string;
+            /** @description Absent when the Organization has no Subscription — a legitimate state for an Organization whose default-plan enrollment failed or that predates enrollment, not an error. */
+            subscription?: components["schemas"]["Subscription"];
+        };
+        PlanCatalogEntry: {
+            plan: components["schemas"]["BillingPlan"];
+            /** @description Exactly one catalog entry carries this flag: the plan every newly provisioned Organization is enrolled into. */
+            is_default: boolean;
+            grants: components["schemas"]["BillingGrant"][];
+            /** @description Every price attached to this plan version. A plan version may carry several simultaneously (e.g. monthly and annual, or the same interval in several currencies). */
+            prices: components["schemas"]["BillingPrice"][];
+        };
+        PlanCatalog: {
+            plans: components["schemas"]["PlanCatalogEntry"][];
+        };
+        ChangePlanRequest: {
+            plan_version_id: string;
+            /** @description Must name a price attached to plan_version_id. Required separately because a plan version may carry several prices. */
+            price_id: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -2742,10 +3108,11 @@ export interface operations {
                      *       "slug": "acme-inc",
                      *       "region": "us",
                      *       "created_at": "2026-01-01T12:00:00Z",
-                     *       "updated_at": "2026-01-01T12:00:00Z"
+                     *       "updated_at": "2026-01-01T12:00:00Z",
+                     *       "identity_provider_bootstrap_token": "boot_9f2c1e...redacted"
                      *     }
                      */
-                    "application/json": components["schemas"]["Organization"];
+                    "application/json": components["schemas"]["CreateOrganizationResponse"];
                 };
             };
             /** @description Validation error or malformed JSON body. */
@@ -2816,7 +3183,16 @@ export interface operations {
                     "application/json": components["schemas"]["Organization"];
                 };
             };
-            /** @description Organization was not found. */
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization was not found, or is not the caller's own Organization. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2831,6 +3207,75 @@ export interface operations {
                      *       }
                      *     }
                      */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createLead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "email": "prospect@example.com",
+                 *       "tier": "growth",
+                 *       "company_name": "Acme Inc",
+                 *       "locale": "en"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateLeadRequest"];
+            };
+        };
+        responses: {
+            /** @description Lead captured. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f",
+                     *       "email": "prospect@example.com",
+                     *       "tier": "growth",
+                     *       "company_name": "Acme Inc",
+                     *       "locale": "en",
+                     *       "captured_at": "2026-01-01T12:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Lead"];
+                };
+            };
+            /** @description Validation error or malformed JSON body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "lead_validation_error",
+                     *         "message": "lead: email is not a valid address",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded for the originating IP address. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -8951,6 +9396,340 @@ export interface operations {
             };
         };
     };
+    listInvites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invites listed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "invites": [
+                     *         {
+                     *           "id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "email": "invitee@example.com",
+                     *           "status": "pending",
+                     *           "inviter_member_id": "018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "created_at": "2026-01-01T12:00:00Z",
+                     *           "expires_at": "2026-01-08T12:00:00Z",
+                     *           "accepted_at": null,
+                     *           "revoked_at": null
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["MemberInviteListResponse"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold members:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization was not found, or is not the caller's own. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    inviteMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "email": "invitee@example.com"
+                 *     }
+                 */
+                "application/json": components["schemas"]["InviteMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Invite issued and emailed. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "email": "invitee@example.com",
+                     *       "status": "pending",
+                     *       "inviter_member_id": "018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "created_at": "2026-01-01T12:00:00Z",
+                     *       "expires_at": "2026-01-08T12:00:00Z",
+                     *       "accepted_at": null,
+                     *       "revoked_at": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["MemberInviteResponse"];
+                };
+            };
+            /** @description Missing email, or a malformed body (unknown fields are rejected). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "member_validation_error",
+                     *         "message": "email is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold members:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization was not found, or is not the caller's own. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The email already has a pending invite in this Organization, or already belongs to one of its Members. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "member_invite_already_pending",
+                     *         "message": "A pending invite already exists for this email. Revoke it before issuing a new one.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revokeInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                invite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invite revoked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "email": "invitee@example.com",
+                     *       "status": "revoked",
+                     *       "inviter_member_id": "018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "created_at": "2026-01-01T12:00:00Z",
+                     *       "expires_at": "2026-01-08T12:00:00Z",
+                     *       "accepted_at": null,
+                     *       "revoked_at": "2026-01-02T09:30:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["MemberInviteResponse"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold members:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such invite in the caller's Organization — including an invite that belongs to a different one. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "member_invite_not_found",
+                     *         "message": "Invite was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The invite is no longer pending (already accepted, already revoked, or past its expiry). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "member_invite_not_pending",
+                     *         "message": "This invite is no longer pending and can no longer be revoked.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    acceptInvite: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invite accepted and Member provisioned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "member_id": "018f2f3a-e000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "organization_id": "018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "email": "invitee@example.com"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AcceptInviteResponse"];
+                };
+            };
+            /** @description No token was supplied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "member_validation_error",
+                     *         "message": "token is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The invite is invalid, expired, revoked or has already been used. The four cases are deliberately indistinguishable. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "member_invite_invalid",
+                     *         "message": "This invite link is invalid, expired, revoked or has already been used.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     configureIdentityProvider: {
         parameters: {
             query?: never;
@@ -9126,6 +9905,148 @@ export interface operations {
                      *       "error": {
                      *         "code": "callback_invalid",
                      *         "message": "The login callback is invalid or has expired.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    requestMagicLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "email": "person@example.com"
+                 *     }
+                 */
+                "application/json": components["schemas"]["RequestMagicLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Always returned, whether or not the email matches an existing Member. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "If that email is registered, a login link has been sent."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RequestMagicLinkResponse"];
+                };
+            };
+            /** @description Rate limit exceeded (per IP or per recipient email). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "rate_limited",
+                     *         "message": "Too many requests. Please try again later.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    peekMagicLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Always 200; validity is reported in the body, not the status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "valid": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PeekMagicLinkResponse"];
+                };
+            };
+        };
+    };
+    confirmMagicLink: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description An Accept value preferring `text/html` selects the browser response (cookie + redirect) instead of the JSON body. */
+                Accept?: string;
+            };
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Login completed for a non-browser caller. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "member_id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "organization_id": "018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "email": "person@example.com",
+                     *       "session_token": "sess_018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f.7f3a9c1b2e4d6a8f0c1b3d5e7f9a1c3e",
+                     *       "expires_at": "2026-01-02T12:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CompleteLoginResponse"];
+                };
+            };
+            /** @description Login completed for a browser. The session is set as an HttpOnly cookie and the browser is redirected to the web app. */
+            302: {
+                headers: {
+                    /** @description The configured web app base URL. */
+                    Location?: string;
+                    /** @description `growth_ops_session=<token>; Path=/; HttpOnly; SameSite=Lax`, plus `Secure` outside development and `Domain` when configured. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The token is invalid, expired, already used, or resolves to a disabled Member. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "magic_link_invalid",
+                     *         "message": "This login link is invalid, expired or has already been used.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -10279,6 +11200,301 @@ export interface operations {
                 };
                 content: {
                     "application/scim+json": components["schemas"]["ScimError"];
+                };
+            };
+        };
+    };
+    getOrganizationSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's current subscription, if any. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "organization_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f",
+                     *       "subscription": {
+                     *         "id": "018f2f3a-8000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "status": "active",
+                     *         "plan": {
+                     *           "key": "pro",
+                     *           "display_name": "Pro",
+                     *           "description": "For growing teams",
+                     *           "plan_version_id": "018f2f3a-8100-7000-9c3a-1f2b3c4d5e6f",
+                     *           "version": 1
+                     *         },
+                     *         "grants": [
+                     *           {
+                     *             "resource_key": "project",
+                     *             "policy_kind": "finite",
+                     *             "policy_limit": 10
+                     *           }
+                     *         ],
+                     *         "price": {
+                     *           "id": "018f2f3a-8200-7000-9c3a-1f2b3c4d5e6f",
+                     *           "amount": 4900,
+                     *           "currency": "BRL",
+                     *           "interval": "month"
+                     *         },
+                     *         "cycle_end_at": "2026-02-01T12:00:00Z"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["OrganizationSubscription"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold billing:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The requested Organization is not the caller's own. Deliberately indistinguishable from an unknown Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "billing_not_found",
+                     *         "message": "Billing information was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    changeOrganizationPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "plan_version_id": "018f2f3a-8100-7000-9c3a-1f2b3c4d5e6f",
+                 *       "price_id": "018f2f3a-8200-7000-9c3a-1f2b3c4d5e6f"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ChangePlanRequest"];
+            };
+        };
+        responses: {
+            /** @description The subscription after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "organization_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f",
+                     *       "subscription": {
+                     *         "id": "018f2f3a-8000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "status": "active",
+                     *         "plan": {
+                     *           "key": "pro",
+                     *           "display_name": "Pro",
+                     *           "description": "For growing teams",
+                     *           "plan_version_id": "018f2f3a-8100-7000-9c3a-1f2b3c4d5e6f",
+                     *           "version": 1
+                     *         },
+                     *         "grants": [
+                     *           {
+                     *             "resource_key": "project",
+                     *             "policy_kind": "finite",
+                     *             "policy_limit": 10
+                     *           }
+                     *         ],
+                     *         "price": {
+                     *           "id": "018f2f3a-8200-7000-9c3a-1f2b3c4d5e6f",
+                     *           "amount": 4900,
+                     *           "currency": "BRL",
+                     *           "interval": "month"
+                     *         },
+                     *         "cycle_end_at": "2026-02-01T12:00:00Z"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["OrganizationSubscription"];
+                };
+            };
+            /** @description Validation error or malformed JSON body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "billing_validation_error",
+                     *         "message": "price_id is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold billing:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The requested Organization is not the caller's own, it has no Subscription to change, or the target plan version/price was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The subscription is not in a state that allows this change. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listBillingPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The published plan catalog. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "plans": [
+                     *         {
+                     *           "plan": {
+                     *             "key": "starter",
+                     *             "display_name": "Starter",
+                     *             "description": "Entry-level plan",
+                     *             "plan_version_id": "018f2f3a-8300-7000-9c3a-1f2b3c4d5e6f",
+                     *             "version": 1
+                     *           },
+                     *           "is_default": true,
+                     *           "grants": [
+                     *             {
+                     *               "resource_key": "project",
+                     *               "policy_kind": "finite",
+                     *               "policy_limit": 3
+                     *             }
+                     *           ],
+                     *           "prices": [
+                     *             {
+                     *               "id": "018f2f3a-8400-7000-9c3a-1f2b3c4d5e6f",
+                     *               "amount": 0,
+                     *               "currency": "BRL",
+                     *               "interval": "month"
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "plan": {
+                     *             "key": "pro",
+                     *             "display_name": "Pro",
+                     *             "description": "For growing teams",
+                     *             "plan_version_id": "018f2f3a-8100-7000-9c3a-1f2b3c4d5e6f",
+                     *             "version": 1
+                     *           },
+                     *           "is_default": false,
+                     *           "grants": [
+                     *             {
+                     *               "resource_key": "project",
+                     *               "policy_kind": "finite",
+                     *               "policy_limit": 10
+                     *             }
+                     *           ],
+                     *           "prices": [
+                     *             {
+                     *               "id": "018f2f3a-8200-7000-9c3a-1f2b3c4d5e6f",
+                     *               "amount": 4900,
+                     *               "currency": "BRL",
+                     *               "interval": "month"
+                     *             },
+                     *             {
+                     *               "id": "018f2f3a-8500-7000-9c3a-1f2b3c4d5e6f",
+                     *               "amount": 49000,
+                     *               "currency": "BRL",
+                     *               "interval": "year"
+                     *             }
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PlanCatalog"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
