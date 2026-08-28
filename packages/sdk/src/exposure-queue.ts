@@ -1,9 +1,15 @@
 import { randomUUID } from "node:crypto";
 import type { ExposureEventSubmission } from "@rollfuse/contracts";
 
+import { type PooledFetch, createPooledFetch } from "./pooled-fetch.js";
+
 const DEFAULT_CAPACITY = 1_000;
 const DEFAULT_BATCH_SIZE = 100;
 const DEFAULT_FLUSH_INTERVAL_MS = 5_000;
+/** Default undici pool timeouts for the flush fetch — see design.md Decision 3. */
+const DEFAULT_HEADERS_TIMEOUT_MS = 10_000;
+const DEFAULT_BODY_TIMEOUT_MS = 10_000;
+const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
 
 export interface ExposureQueueOptions {
   baseUrl: string;
@@ -11,7 +17,15 @@ export interface ExposureQueueOptions {
   capacity?: number;
   batchSize?: number;
   flushIntervalMs?: number;
+  /**
+   * Injectable for tests; defaults to an undici-pool-backed fetch bound to
+   * baseUrl — see `ConfigurationClientOptions.fetchImpl`'s equivalent doc
+   * in `configuration-client.ts`.
+   */
   fetchImpl?: typeof fetch;
+  headersTimeoutMs?: number;
+  bodyTimeoutMs?: number;
+  connectTimeoutMs?: number;
   onExposureDropped?: (count: number) => void;
   onExposureSubmitError?: (error: unknown) => void;
 }
@@ -41,6 +55,8 @@ export class ExposureQueue {
   private readonly batchSize: number;
   private readonly flushIntervalMs: number;
   private readonly fetchImpl: typeof fetch;
+  /** Only set when this instance created its own pooled fetch — never closes a caller-supplied fetchImpl it doesn't own. */
+  private readonly ownedPooledFetch: PooledFetch | undefined;
   private readonly onExposureDropped: ((count: number) => void) | undefined;
   private readonly onExposureSubmitError: ((error: unknown) => void) | undefined;
 
@@ -53,7 +69,20 @@ export class ExposureQueue {
     this.capacity = options.capacity ?? DEFAULT_CAPACITY;
     this.batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
     this.flushIntervalMs = options.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+
+    if (options.fetchImpl) {
+      this.fetchImpl = options.fetchImpl;
+      this.ownedPooledFetch = undefined;
+    } else {
+      const pooled = createPooledFetch(this.baseUrl, {
+        headersTimeoutMs: options.headersTimeoutMs ?? DEFAULT_HEADERS_TIMEOUT_MS,
+        bodyTimeoutMs: options.bodyTimeoutMs ?? DEFAULT_BODY_TIMEOUT_MS,
+        connectTimeoutMs: options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
+      });
+      this.fetchImpl = pooled;
+      this.ownedPooledFetch = pooled;
+    }
+
     this.onExposureDropped = options.onExposureDropped;
     this.onExposureSubmitError = options.onExposureSubmitError;
   }
@@ -138,9 +167,15 @@ export class ExposureQueue {
     }
   }
 
-  /** Stops the flush timer and submits any remaining queued events. */
+  /**
+   * Stops the flush timer, submits any remaining queued events, then
+   * releases the underlying undici connection pool (only if this instance
+   * created its own — a no-op when a caller-supplied `fetchImpl` is in
+   * use, since its lifecycle belongs to whoever constructed it).
+   */
   async close(): Promise<void> {
     this.stop();
     await this.flush();
+    await this.ownedPooledFetch?.close();
   }
 }

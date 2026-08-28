@@ -34,7 +34,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@rollfuse/contracts": "^0.1.0"
+    "@rollfuse/contracts": "^0.2.2",
+    "undici": "6.28.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -1,11 +1,17 @@
 import type { Configuration } from "@rollfuse/contracts";
 
+import { type PooledFetch, createPooledFetch } from "./pooled-fetch.js";
+
 /** Default interval between successful-poll refreshes. */
 const DEFAULT_REFRESH_INTERVAL_MS = 30_000;
 /** Starting delay before retrying a failed poll. */
 const BASE_BACKOFF_MS = 1_000;
 /** Upper bound on the capped-exponential retry backoff. */
 const MAX_BACKOFF_MS = 30_000;
+/** Default undici pool timeouts for the polling fetch — see design.md Decision 3. */
+const DEFAULT_HEADERS_TIMEOUT_MS = 10_000;
+const DEFAULT_BODY_TIMEOUT_MS = 10_000;
+const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
 
 export interface ConfigurationClientOptions {
   /** The platform API's base URL, e.g. "https://api.rollfuse.com". */
@@ -22,8 +28,17 @@ export interface ConfigurationClientOptions {
    * an integrator explicitly opts into a staleness bound.
    */
   maxConfigAgeMs?: number;
-  /** Injectable for tests; defaults to the global `fetch`. */
+  /**
+   * Injectable for tests; defaults to an undici-pool-backed fetch bound to
+   * baseUrl, with `headersTimeoutMs`/`bodyTimeoutMs`/`connectTimeoutMs`
+   * (10s each by default) — closing the gap the bare global `fetch` left
+   * (no per-request timeout at all) for this long-lived polling client.
+   */
   fetchImpl?: typeof fetch;
+  /** Only used when `fetchImpl` is not supplied — see `fetchImpl`'s own doc. */
+  headersTimeoutMs?: number;
+  bodyTimeoutMs?: number;
+  connectTimeoutMs?: number;
   /** Called after each successful refresh, with the new Configuration Version. */
   onConfigRefreshed?: (version: number) => void;
   /** Called after each failed or invalid refresh attempt. */
@@ -49,6 +64,8 @@ export class ConfigurationClient {
   private readonly refreshIntervalMs: number;
   private readonly maxConfigAgeMs: number | undefined;
   private readonly fetchImpl: typeof fetch;
+  /** Only set when this instance created its own pooled fetch — never closes a caller-supplied fetchImpl it doesn't own. */
+  private readonly ownedPooledFetch: PooledFetch | undefined;
   private readonly onConfigRefreshed: ((version: number) => void) | undefined;
   private readonly onConfigRefreshError: ((error: unknown) => void) | undefined;
 
@@ -66,7 +83,20 @@ export class ConfigurationClient {
     this.credential = options.credential;
     this.refreshIntervalMs = options.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS;
     this.maxConfigAgeMs = options.maxConfigAgeMs;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+
+    if (options.fetchImpl) {
+      this.fetchImpl = options.fetchImpl;
+      this.ownedPooledFetch = undefined;
+    } else {
+      const pooled = createPooledFetch(this.baseUrl, {
+        headersTimeoutMs: options.headersTimeoutMs ?? DEFAULT_HEADERS_TIMEOUT_MS,
+        bodyTimeoutMs: options.bodyTimeoutMs ?? DEFAULT_BODY_TIMEOUT_MS,
+        connectTimeoutMs: options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
+      });
+      this.fetchImpl = pooled;
+      this.ownedPooledFetch = pooled;
+    }
+
     this.onConfigRefreshed = options.onConfigRefreshed;
     this.onConfigRefreshError = options.onConfigRefreshError;
 
@@ -98,6 +128,17 @@ export class ConfigurationClient {
       clearTimeout(this.timer);
       this.timer = undefined;
     }
+  }
+
+  /**
+   * Releases the underlying undici connection pool, if this instance
+   * created its own (i.e. no `fetchImpl` was supplied). A no-op when a
+   * caller-supplied `fetchImpl` is in use — its lifecycle belongs to
+   * whoever constructed it, not this client. Does not call `stop()`
+   * itself; callers that want both should call `stop()` then `close()`.
+   */
+  async close(): Promise<void> {
+    await this.ownedPooledFetch?.close();
   }
 
   /** The currently cached Configuration, or undefined if none has ever been fetched. */

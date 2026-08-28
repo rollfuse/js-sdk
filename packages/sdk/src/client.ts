@@ -23,8 +23,17 @@ export interface RollfuseClientOptions {
   exposureBatchSize?: number;
   /** Interval between periodic exposure-batch flushes, in milliseconds. Default 5s. */
   exposureFlushIntervalMs?: number;
-  /** Injectable for tests; defaults to the global `fetch`. */
+  /**
+   * Injectable for tests; defaults to an undici-pool-backed fetch bound to
+   * baseUrl — see `ConfigurationClientOptions.fetchImpl`'s doc comment in
+   * `configuration-client.ts` for the timeout defaults this replaces the
+   * bare global `fetch`'s lack of one with.
+   */
   fetchImpl?: typeof fetch;
+  /** Only used when `fetchImpl` is not supplied. */
+  headersTimeoutMs?: number;
+  bodyTimeoutMs?: number;
+  connectTimeoutMs?: number;
   /** Called after each successful Configuration refresh, with the new version. */
   onConfigRefreshed?: (version: number) => void;
   /** Called after each failed or invalid Configuration refresh attempt. */
@@ -72,6 +81,9 @@ export class RollfuseClient {
       refreshIntervalMs: options.refreshIntervalMs,
       maxConfigAgeMs: options.maxConfigAgeMs,
       fetchImpl: options.fetchImpl,
+      headersTimeoutMs: options.headersTimeoutMs,
+      bodyTimeoutMs: options.bodyTimeoutMs,
+      connectTimeoutMs: options.connectTimeoutMs,
       onConfigRefreshed: options.onConfigRefreshed,
       onConfigRefreshError: options.onConfigRefreshError,
     });
@@ -83,6 +95,9 @@ export class RollfuseClient {
       batchSize: options.exposureBatchSize,
       flushIntervalMs: options.exposureFlushIntervalMs,
       fetchImpl: options.fetchImpl,
+      headersTimeoutMs: options.headersTimeoutMs,
+      bodyTimeoutMs: options.bodyTimeoutMs,
+      connectTimeoutMs: options.connectTimeoutMs,
       onExposureDropped: options.onExposureDropped,
       onExposureSubmitError: options.onExposureSubmitError,
     });
@@ -107,10 +122,15 @@ export class RollfuseClient {
     this.exposureQueue.stop();
   }
 
-  /** Stops background work and submits any remaining queued exposures. */
+  /**
+   * Stops background work, submits any remaining queued exposures, and
+   * releases both sub-clients' undici connection pools (a no-op for
+   * either if a caller-supplied `fetchImpl` is in use — see
+   * `ConfigurationClient.close()`/`ExposureQueue.close()`).
+   */
   async close(): Promise<void> {
     this.configurationClient.stop();
-    await this.exposureQueue.close();
+    await Promise.all([this.configurationClient.close(), this.exposureQueue.close()]);
   }
 
   /**
