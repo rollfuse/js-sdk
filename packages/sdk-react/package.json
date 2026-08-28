@@ -37,7 +37,7 @@
     "react": ">=18"
   },
   "dependencies": {
-    "@rollfuse/contracts": "^0.1.0"
+    "@rollfuse/contracts": "^0.2.2"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
