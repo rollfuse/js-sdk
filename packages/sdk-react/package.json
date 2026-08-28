@@ -1,9 +1,11 @@
 {
   "name": "@rollfuse/sdk-react",
   "version": "0.1.0",
-  "private": true,
   "description": "React/Next.js consumption layer for platform feature flags: a Provider fed by server-evaluated results, with useFlag/useFlags hooks, and no Service Credential ever reaching browser code.",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=18"
   },
@@ -35,7 +37,7 @@
     "react": ">=18"
   },
   "dependencies": {
-    "@rollfuse/contracts": "file:../contracts"
+    "@rollfuse/contracts": "^0.1.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
