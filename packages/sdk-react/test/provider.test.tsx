@@ -1,6 +1,6 @@
 import type { EvaluationResult } from "@rollfuse/contracts";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { RollfuseProvider } from "../src/context.js";
 import { FlagNotFoundError, MissingProviderError } from "../src/errors.js";
 import { useFlag, useFlags } from "../src/hooks.js";
@@ -103,5 +103,42 @@ describe("RollfuseProvider", () => {
     }
 
     expect(() => render(<ReadAllWithoutProvider />)).toThrow(MissingProviderError);
+  });
+
+  it("infers value's type from the fallback given, at runtime and compile time", () => {
+    function ReadTypedFallback() {
+      const result = useFlag("checkout-redesign", { fallback: false });
+
+      // Compile-time: `result.value` must be narrowed to `boolean`, not
+      // `unknown` — this is the actual assertion; expectTypeOf performs no
+      // runtime check itself (see the `.toBe` below for that).
+      expectTypeOf(result.value).toEqualTypeOf<boolean>();
+
+      return <div data-testid="value">{JSON.stringify(result.value)}</div>;
+    }
+
+    render(
+      <RollfuseProvider evaluations={[evaluation({ value: true })]}>
+        <ReadTypedFallback />
+      </RollfuseProvider>,
+    );
+
+    expect(screen.getByTestId("value").textContent).toBe("true");
+  });
+
+  it("leaves value as unknown when no fallback is given, unchanged from before the generic existed", () => {
+    function ReadUntyped() {
+      const result = useFlag("checkout-redesign");
+
+      expectTypeOf(result.value).toEqualTypeOf<unknown>();
+
+      return null;
+    }
+
+    render(
+      <RollfuseProvider evaluations={[evaluation()]}>
+        <ReadUntyped />
+      </RollfuseProvider>,
+    );
   });
 });
