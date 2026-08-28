@@ -81,3 +81,19 @@ npm run build   # emits dist/ (gitignored), a dual ESM+CJS build via tsup
 
 Depends on `@rollfuse/contracts` (published separately to npm) for its
 request/response types.
+
+### Publishing
+
+From the repo root:
+
+```bash
+make sdk-bump pkg=sdk-js level=<patch|minor|major>   # opens a PR with the version bump
+# ...review and merge the PR...
+make sdk-release pkg=sdk-js                            # builds, gates, and publishes
+```
+
+`sdk-bump` runs lint/typecheck/test/audit, bumps `version`, and opens
+the PR; `sdk-release` re-runs the same gates, builds, and runs `npm
+publish`. `NPM_TOKEN` must be set in the calling shell (an npm
+Automation token, so 2FA/OTP prompts don't block the non-interactive
+publish step) — never written to a file.
