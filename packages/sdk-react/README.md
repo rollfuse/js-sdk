@@ -146,6 +146,5 @@ npm test
 npm run build   # emits dist/ (gitignored), a dual ESM+CJS build via tsup
 ```
 
-Depends on `@rollfuse/contracts` (a local sibling package under
-`packages/contracts`) for the `EvaluationResult` type — build that package
-first if working outside `make build`/`make test`.
+Depends on `@rollfuse/contracts` (published separately to npm) for the
+`EvaluationResult` type.
