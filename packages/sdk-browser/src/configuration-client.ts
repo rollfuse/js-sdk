@@ -72,7 +72,19 @@ export class ConfigurationClient {
     this.publicCredential = options.publicCredential;
     this.refreshIntervalMs = options.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS;
     this.maxConfigAgeMs = options.maxConfigAgeMs;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    // Not a bare `fetch` reference, and not just any wrapper around it:
+    // some environments (e.g. OpenTelemetry's fetch auto-instrumentation)
+    // replace `window.fetch` with a wrapper that only works when invoked
+    // with `this === window`/globalThis. `this.fetchImpl(...)` (member
+    // access on this class) breaks that binding; so, subtly, does
+    // `(...args) => fetch(...args)` — a bare identifier call inside an ES
+    // module is strict-mode, so `this` is `undefined` there too. Only
+    // explicit member-call syntax on `globalThis` (`globalThis.fetch(...)`)
+    // reliably sets `this === globalThis` for the call. Getting this wrong
+    // fails silently (this class never surfaces it beyond
+    // `onConfigRefreshError`, which callers may not have wired up),
+    // breaking every fetch forever.
+    this.fetchImpl = options.fetchImpl ?? ((...args) => globalThis.fetch(...args));
 
     this.onConfigRefreshed = options.onConfigRefreshed;
     this.onConfigRefreshError = options.onConfigRefreshError;

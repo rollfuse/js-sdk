@@ -59,7 +59,12 @@ export class ExposureQueue {
     this.capacity = options.capacity ?? DEFAULT_CAPACITY;
     this.batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
     this.flushIntervalMs = options.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    // See configuration-client.ts's identical fix and its full rationale:
+    // must be `globalThis.fetch(...)` (member-call syntax), not a bare
+    // `fetch` reference or even `(...args) => fetch(...args)` — both
+    // break under OpenTelemetry's fetch instrumentation with a silent
+    // "Illegal invocation" TypeError.
+    this.fetchImpl = options.fetchImpl ?? ((...args) => globalThis.fetch(...args));
 
     this.onExposureDropped = options.onExposureDropped;
     this.onExposureSubmitError = options.onExposureSubmitError;

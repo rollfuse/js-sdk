@@ -247,4 +247,36 @@ describe("ConfigurationClient", () => {
 
     expect(fetchImpl.mock.calls.length).toBe(callsAtStop);
   });
+
+  it("defaults to a fetch that works when the global fetch is a `this`-sensitive wrapper (e.g. OpenTelemetry's instrumentation)", async () => {
+    // Reproduces a real bug: some environments replace `window.fetch`
+    // with a wrapper that throws "Illegal invocation" unless called with
+    // `this === window`/globalThis. A bare `fetchImpl: options.fetchImpl
+    // ?? fetch` stores a detached reference and calls it as
+    // `this.fetchImpl(...)`, hitting exactly that failure — silently,
+    // forever, since no fetchImpl was supplied to catch it in a test
+    // using a plain mock function.
+    const thisSensitiveFetch = vi.fn(function (this: unknown) {
+      if (this !== globalThis) {
+        throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+      }
+
+      return Promise.resolve(jsonResponse(validConfig));
+    });
+    vi.stubGlobal("fetch", thisSensitiveFetch);
+
+    const onConfigRefreshError = vi.fn();
+    const client = new ConfigurationClient({
+      baseUrl: "http://api.test",
+      publicCredential: "pub_cred",
+      onConfigRefreshError,
+    });
+
+    await client.start();
+
+    expect(onConfigRefreshError).not.toHaveBeenCalled();
+    expect(client.getConfig()).toEqual(validConfig);
+
+    vi.unstubAllGlobals();
+  });
 });

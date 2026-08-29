@@ -129,4 +129,32 @@ describe("ExposureQueue", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
     );
   });
+
+  it("defaults to a fetch that works when the global fetch is a `this`-sensitive wrapper (e.g. OpenTelemetry's instrumentation)", async () => {
+    // See configuration-client.test.ts's identical case for the full
+    // rationale — same bug, same fix, in this class's own fetchImpl default.
+    const thisSensitiveFetch = vi.fn(function (this: unknown) {
+      if (this !== globalThis) {
+        throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+      }
+
+      return Promise.resolve(jsonResponse({ accepted: 1 }));
+    });
+    vi.stubGlobal("fetch", thisSensitiveFetch);
+
+    const onExposureSubmitError = vi.fn();
+    const queue = new ExposureQueue({
+      baseUrl: "http://api.test",
+      publicCredential: "pub_cred",
+      onExposureSubmitError,
+    });
+
+    queue.enqueue(sampleEvent);
+    await queue.flush();
+
+    expect(onExposureSubmitError).not.toHaveBeenCalled();
+    expect(thisSensitiveFetch).toHaveBeenCalledTimes(1);
+
+    vi.unstubAllGlobals();
+  });
 });
