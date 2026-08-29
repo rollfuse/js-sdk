@@ -1,6 +1,6 @@
 {
   "name": "@rollfuse/sdk-browser",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Browser SDK that evaluates Growth Operations Platform feature flags directly in client-side JavaScript using a Public Credential (never a regular Service Credential), reusing @rollfuse/evaluation-core's deterministic bucketing/evaluation algorithm.",
   "type": "module",
   "publishConfig": {
