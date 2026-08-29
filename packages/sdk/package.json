@@ -35,6 +35,7 @@
   },
   "dependencies": {
     "@rollfuse/contracts": "^0.2.2",
+    "@rollfuse/evaluation-core": "^0.1.0",
     "undici": "6.28.0"
   },
   "devDependencies": {

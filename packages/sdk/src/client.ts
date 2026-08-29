@@ -1,6 +1,6 @@
 import type { Configuration, EvaluationResult } from "@rollfuse/contracts";
+import { evaluateFlag } from "@rollfuse/evaluation-core";
 import { ConfigurationClient } from "./configuration-client.js";
-import { evaluateFlag } from "./evaluate.js";
 import { ConfigNotReadyError, CredentialRequiredError, FlagNotFoundError } from "./errors.js";
 import { ExposureQueue } from "./exposure-queue.js";
 
