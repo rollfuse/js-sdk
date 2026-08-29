@@ -2425,6 +2425,8 @@ export interface components {
         };
         IssueCredentialRequest: {
             scopes: ("config:read" | "metrics:write" | "acquisition:write" | "identity:write")[];
+            /** @description Issue this credential as safe to embed in browser-visible code. MUST be restricted to exactly the config:read scope — issuing a Public credential with any other scope is rejected. Defaults to false. */
+            public?: boolean;
         };
         Credential: {
             id: string;
@@ -2432,6 +2434,8 @@ export interface components {
             project_id: string;
             environment_id: string;
             scopes: ("config:read" | "metrics:write" | "acquisition:write" | "identity:write")[];
+            /** @description Whether this credential was issued as safe to embed in browser-visible code. Fixed at issuance. */
+            public: boolean;
             /** @enum {string} */
             status: "active" | "revoked";
             /** @description The plaintext credential token. Returned only in the issuance response; no other response ever includes it. */
@@ -2629,6 +2633,8 @@ export interface components {
             project_id: string;
             environment_id: string;
             scopes: ("config:read" | "metrics:write" | "acquisition:write" | "identity:write")[];
+            /** @description Whether this credential was issued as safe to embed in browser-visible code. Fixed at issuance. */
+            public: boolean;
             /** @enum {string} */
             status: "active" | "revoked";
             /** Format: date-time */
@@ -7455,6 +7461,7 @@ export interface operations {
                      *         "scopes": [
                      *           "config:read"
                      *         ],
+                     *         "public": false,
                      *         "status": "active",
                      *         "created_at": "2026-01-01T12:00:00Z"
                      *       }
@@ -7538,6 +7545,7 @@ export interface operations {
                      *       "scopes": [
                      *         "config:read"
                      *       ],
+                     *       "public": false,
                      *       "status": "active",
                      *       "token": "svc_018f2f3a-b000-7000-9c3a-1f2b3c4d5e6f.7f3a9c1b2e4d6a8f0c1b3d5e7f9a1c3e",
                      *       "created_at": "2026-01-01T12:00:00Z"
@@ -7628,6 +7636,7 @@ export interface operations {
                      *       "scopes": [
                      *         "config:read"
                      *       ],
+                     *       "public": false,
                      *       "status": "revoked",
                      *       "created_at": "2026-01-01T12:00:00Z",
                      *       "revoked_at": "2026-01-01T13:00:00Z"
