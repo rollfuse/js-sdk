@@ -1,6 +1,6 @@
 {
   "name": "@rollfuse/sdk-react",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "React/Next.js consumption layer for platform feature flags: a Provider fed by server-evaluated results, with useFlag/useFlags hooks, and no Service Credential ever reaching browser code.",
   "type": "module",
   "publishConfig": {
