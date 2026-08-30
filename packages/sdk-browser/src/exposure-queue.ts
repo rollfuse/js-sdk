@@ -1,4 +1,5 @@
 import type { ExposureEventSubmission } from "@rollfuse/contracts";
+import { applyTraceHeaders, resolveTraceHeaders } from "@rollfuse/evaluation-core";
 
 const DEFAULT_CAPACITY = 1_000;
 /**
@@ -131,12 +132,14 @@ export class ExposureQueue {
     this.queue = [];
 
     try {
+      const trace = await resolveTraceHeaders();
+      const headers = applyTraceHeaders(
+        { Authorization: `Bearer ${this.publicCredential}`, "Content-Type": "application/json" },
+        trace,
+      );
       const response = await this.fetchImpl(`${this.baseUrl}/v1/exposure-events`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.publicCredential}`,
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({ events: batch }),
       });
 

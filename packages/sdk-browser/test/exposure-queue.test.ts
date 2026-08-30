@@ -116,6 +116,38 @@ describe("ExposureQueue", () => {
     expect(body.events).toHaveLength(1);
   });
 
+  it("attaches one traceparent header per flush request, covering the whole batch", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ accepted: 2 }));
+    const queue = new ExposureQueue({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+
+    queue.enqueue(sampleEvent);
+    queue.enqueue({ ...sampleEvent, subjectKey: "user_2" });
+    await queue.flush();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    const [, init] = fetchImpl.mock.calls[0] as [string, { headers: Record<string, string> }];
+
+    expect(init.headers.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-0[01]$/);
+  });
+
+  it("gives two independent flushes their own traceparent", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ accepted: 1 }));
+    const queue = new ExposureQueue({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+
+    queue.enqueue(sampleEvent);
+    await queue.flush();
+    queue.enqueue({ ...sampleEvent, subjectKey: "user_2" });
+    await queue.flush();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    const [, firstInit] = fetchImpl.mock.calls[0] as [string, { headers: Record<string, string> }];
+    const [, secondInit] = fetchImpl.mock.calls[1] as [string, { headers: Record<string, string> }];
+
+    expect(firstInit.headers.traceparent).not.toBe(secondInit.headers.traceparent);
+  });
+
   it("generates a well-formed UUID correlation id via the Web Crypto API, not node:crypto", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ accepted: 1 }));
 

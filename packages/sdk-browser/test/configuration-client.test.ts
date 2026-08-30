@@ -52,10 +52,29 @@ describe("ConfigurationClient", () => {
     expect(onConfigRefreshed).toHaveBeenCalledWith(3);
     expect(fetchImpl).toHaveBeenCalledWith(
       "http://api.test/v1/config",
-      expect.objectContaining({ headers: { Authorization: "Bearer pub_cred" } }),
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer pub_cred" }),
+      }),
     );
 
     client.stop();
+  });
+
+  it("attaches a valid traceparent header to the GET /v1/config request", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+
+    const client = new ConfigurationClient({
+      baseUrl: "http://api.test",
+      publicCredential: "pub_cred",
+      fetchImpl,
+    });
+
+    await client.start();
+    client.stop();
+
+    const [, init] = fetchImpl.mock.calls[0] as [string, { headers: Record<string, string> }];
+
+    expect(init.headers.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-0[01]$/);
   });
 
   it("evaluate does not perform a network request: start() does not block on refreshIntervalMs", async () => {

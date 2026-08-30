@@ -32,7 +32,7 @@
   },
   "dependencies": {
     "@rollfuse/contracts": "^0.2.2",
-    "@rollfuse/evaluation-core": "^0.1.0"
+    "@rollfuse/evaluation-core": "^0.2.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

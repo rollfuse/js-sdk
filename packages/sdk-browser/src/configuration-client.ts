@@ -1,4 +1,5 @@
 import type { Configuration } from "@rollfuse/contracts";
+import { applyTraceHeaders, resolveTraceHeaders } from "@rollfuse/evaluation-core";
 
 /** Default interval between successful-poll refreshes. */
 const DEFAULT_REFRESH_INTERVAL_MS = 30_000;
@@ -167,9 +168,9 @@ export class ConfigurationClient {
 
   private async attemptFetch(): Promise<boolean> {
     try {
-      const response = await this.fetchImpl(`${this.baseUrl}/v1/config`, {
-        headers: { Authorization: `Bearer ${this.publicCredential}` },
-      });
+      const trace = await resolveTraceHeaders();
+      const headers = applyTraceHeaders({ Authorization: `Bearer ${this.publicCredential}` }, trace);
+      const response = await this.fetchImpl(`${this.baseUrl}/v1/config`, { headers });
 
       if (!response.ok) {
         throw new Error(`GET /v1/config returned status ${response.status}`);
