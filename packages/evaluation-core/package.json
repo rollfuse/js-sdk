@@ -1,6 +1,6 @@
 {
   "name": "@rollfuse/evaluation-core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Dependency-free, browser-and-Node-safe deterministic flag evaluation and bucketing, shared by @rollfuse/sdk-js and @rollfuse/sdk-browser so they can never silently drift.",
   "type": "module",
   "publishConfig": {
