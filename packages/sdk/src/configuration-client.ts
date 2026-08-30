@@ -1,4 +1,5 @@
 import type { Configuration } from "@rollfuse/contracts";
+import { applyTraceHeaders, resolveTraceHeaders } from "@rollfuse/evaluation-core";
 
 import { type PooledFetch, createPooledFetch } from "./pooled-fetch.js";
 
@@ -190,9 +191,9 @@ export class ConfigurationClient {
 
   private async attemptFetch(): Promise<boolean> {
     try {
-      const response = await this.fetchImpl(`${this.baseUrl}/v1/config`, {
-        headers: { Authorization: `Bearer ${this.credential}` },
-      });
+      const trace = await resolveTraceHeaders();
+      const headers = applyTraceHeaders({ Authorization: `Bearer ${this.credential}` }, trace);
+      const response = await this.fetchImpl(`${this.baseUrl}/v1/config`, { headers });
 
       if (!response.ok) {
         throw new Error(`GET /v1/config returned status ${response.status}`);

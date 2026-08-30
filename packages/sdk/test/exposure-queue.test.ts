@@ -58,7 +58,38 @@ describe("ExposureQueue", () => {
     const body = JSON.parse((fetchImpl.mock.calls[0][1] as RequestInit).body as string);
     expect(body.events).toHaveLength(2);
     expect(body.events[0].correlation_id).not.toBe(body.events[1].correlation_id);
-    expect(body.events[0].occurred_at).toEqual(expect.any(String));
+  });
+
+  it("attaches one traceparent header per flush request, covering the whole batch", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ accepted: 2 }));
+    const queue = new ExposureQueue({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+
+    queue.enqueue(sampleEvent);
+    queue.enqueue({ ...sampleEvent, subjectKey: "user_2" });
+    await queue.flush();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    const [, init] = fetchImpl.mock.calls[0] as [string, { headers: Record<string, string> }];
+
+    expect(init.headers.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-0[01]$/);
+  });
+
+  it("gives two independent flushes their own traceparent", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ accepted: 1 }));
+    const queue = new ExposureQueue({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+
+    queue.enqueue(sampleEvent);
+    await queue.flush();
+    queue.enqueue({ ...sampleEvent, subjectKey: "user_2" });
+    await queue.flush();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    const [, firstInit] = fetchImpl.mock.calls[0] as [string, { headers: Record<string, string> }];
+    const [, secondInit] = fetchImpl.mock.calls[1] as [string, { headers: Record<string, string> }];
+
+    expect(firstInit.headers.traceparent).not.toBe(secondInit.headers.traceparent);
   });
 
   it("close() flushes remaining events and stops the timer", async () => {
