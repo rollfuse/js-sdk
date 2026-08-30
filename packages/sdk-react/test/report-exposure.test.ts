@@ -24,6 +24,16 @@ describe("reportExposure", () => {
     );
   });
 
+  it("attaches a valid traceparent header to the forwarded request", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+    await reportExposure("/api/rollfuse/exposure", payload, { fetchImpl });
+
+    const [, init] = fetchImpl.mock.calls[0] as [string, { headers: Record<string, string> }];
+
+    expect(init.headers.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-0[01]$/);
+  });
+
   it("does not throw and calls onError when the response is not ok", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 500 });
     const onError = vi.fn();

@@ -1,3 +1,5 @@
+import { applyTraceHeaders, resolveTraceHeaders } from "@rollfuse/evaluation-core";
+
 /** What `reportExposure` sends to the application-controlled proxy endpoint. */
 export interface ExposureReport {
   flagKey: string;
@@ -33,9 +35,11 @@ export async function reportExposure(
   const fetchImpl = options.fetchImpl ?? fetch;
 
   try {
+    const trace = await resolveTraceHeaders();
+    const headers = applyTraceHeaders({ "Content-Type": "application/json" }, trace);
     const response = await fetchImpl(endpointUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(payload),
     });
 
