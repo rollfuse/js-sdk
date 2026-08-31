@@ -1178,6 +1178,190 @@
       }
     }
   },
+  "CreateContractTemplateRequest": {
+    "type": "object",
+    "required": [
+      "name"
+    ],
+    "properties": {
+      "name": {
+        "type": "string"
+      }
+    }
+  },
+  "ContractTemplate": {
+    "type": "object",
+    "required": [
+      "id",
+      "scope",
+      "name",
+      "created_at",
+      "updated_at"
+    ],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "scope": {
+        "type": "string",
+        "enum": [
+          "platform",
+          "project"
+        ]
+      },
+      "project_id": {
+        "type": "string",
+        "description": "Absent for a platform-scoped template."
+      },
+      "name": {
+        "type": "string"
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updated_at": {
+        "type": "string",
+        "format": "date-time"
+      }
+    }
+  },
+  "ContractTemplateList": {
+    "type": "object",
+    "required": [
+      "connector_templates"
+    ],
+    "properties": {
+      "connector_templates": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ContractTemplate"
+        }
+      }
+    }
+  },
+  "MappingRequest": {
+    "type": "object",
+    "required": [
+      "root_path",
+      "value_field",
+      "observed_at_field",
+      "observed_at_format"
+    ],
+    "description": "The request body shared by creating and editing a ContractTemplateVersion's mapping.",
+    "properties": {
+      "root_path": {
+        "type": "string"
+      },
+      "value_field": {
+        "type": "string"
+      },
+      "observed_at_field": {
+        "type": "string"
+      },
+      "observed_at_format": {
+        "type": "string",
+        "enum": [
+          "rfc3339",
+          "unix_ms"
+        ]
+      },
+      "subject_key_field": {
+        "type": "string"
+      }
+    }
+  },
+  "ContractTemplateVersion": {
+    "type": "object",
+    "required": [
+      "id",
+      "template_id",
+      "version",
+      "root_path",
+      "value_field",
+      "observed_at_field",
+      "observed_at_format",
+      "review_status",
+      "created_at",
+      "updated_at"
+    ],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "template_id": {
+        "type": "string"
+      },
+      "version": {
+        "type": "integer"
+      },
+      "root_path": {
+        "type": "string"
+      },
+      "value_field": {
+        "type": "string"
+      },
+      "observed_at_field": {
+        "type": "string"
+      },
+      "observed_at_format": {
+        "type": "string",
+        "enum": [
+          "rfc3339",
+          "unix_ms"
+        ]
+      },
+      "subject_key_field": {
+        "type": "string"
+      },
+      "review_status": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "submitted",
+          "approved",
+          "rejected"
+        ]
+      },
+      "rejection_reason": {
+        "type": "string",
+        "description": "Present only when review_status is rejected."
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updated_at": {
+        "type": "string",
+        "format": "date-time"
+      }
+    }
+  },
+  "ContractTemplateVersionList": {
+    "type": "object",
+    "required": [
+      "versions"
+    ],
+    "properties": {
+      "versions": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ContractTemplateVersion"
+        }
+      }
+    }
+  },
+  "RejectContractTemplateVersionRequest": {
+    "type": "object",
+    "required": [
+      "reason"
+    ],
+    "properties": {
+      "reason": {
+        "type": "string"
+      }
+    }
+  },
   "CreateConnectorRequest": {
     "type": "object",
     "required": [
