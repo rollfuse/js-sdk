@@ -242,6 +242,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/feature-flags/{feature_flag_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a feature flag
+         * @description Requires a session for a Member holding feature-flags:manage — the same gate the create, get and list operations on this resource family already apply; archiving introduces no new authorization boundary.
+         *
+         *     Archiving is a soft delete: the feature flag, its variations, its exposure events and its experiments all remain intact and readable. It records archived_at, releases the flag's feature_flag entitlement allocation so the slot is immediately reusable, and disables (enabled=false) every environment flag configuration referencing it. The flag's key stays permanently reserved within its project — a new flag can never reuse it.
+         *
+         *     A feature flag whose owning project belongs to another Organization is rejected identically to an unknown feature flag id.
+         */
+        post: operations["archiveFeatureFlag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/feature-flags/{feature_flag_id}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unarchive a feature flag
+         * @description Requires a session for a Member holding feature-flags:manage — the same gate the create, get and list operations on this resource family already apply.
+         *
+         *     Unarchiving clears archived_at only after the same synchronous feature_flag entitlement check-and-allocate a creation goes through succeeds, so it is rejected when the Organization has no free slot at that moment (it downgraded, or filled the freed slot with another flag); the feature flag then remains archived.
+         *
+         *     Unarchiving does not resume targeting: the environment flag configurations archiving disabled stay disabled until an operator re-enables each one explicitly.
+         */
+        post: operations["unarchiveFeatureFlag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/environments/{environment_id}/feature-flags/{feature_flag_id}/config": {
         parameters: {
             query?: never;
@@ -477,9 +525,29 @@ export interface paths {
         put?: never;
         /**
          * Create a Connector under a project
-         * @description Requires a session for a Member holding connectors:manage. A Connector is a Project-scoped configuration for pulling Observation data from an external HTTP source into a mapped MetricDefinition and Environment, both owned by the same Project. The pull secret is stored encrypted at rest and returned in plaintext only in this response. A Connector is pinned at creation to a specific, registered contract_version for its type (omitted resolves to the latest registered version); the pin is immutable afterward, so introducing a new contract version never changes how an already-created Connector's sync behaves — see the connectors capability spec's "Contract Version Is Pinned At Creation" requirement. A project outside the caller's own Organization is rejected identically to an unknown one.
+         * @description Requires a session for a Member holding connectors:manage. A Connector is a Project-scoped configuration for pulling Observation data from an external HTTP source into a mapped MetricDefinition and Environment, both owned by the same Project. The pull secret is stored encrypted at rest and returned in plaintext only in this response. A Connector is pinned at creation to a specific, approved version of a ContractTemplate (omitted resolves to that template's highest currently approved version); the pin is immutable afterward except via an explicit later edit, so approving a new template version never changes how an already-created Connector's sync behaves — see the connectors capability spec's "Contract Template Version Is Pinned At Creation" requirement. A project outside the caller's own Organization is rejected identically to an unknown one.
          */
         post: operations["createConnector"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/connectors/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test a mapping against a live source without persisting anything
+         * @description Requires a session for a Member holding connectors:manage. Fetches source_url once (bounded by the same timeout, response-size limit and SSRF protection as a Connector's own sync) and applies the supplied mapping fields — never a saved ContractTemplateVersion or Connector's own mapping. Never creates or modifies a Connector, ContractTemplateVersion, or Observation. A project outside the caller's own Organization is rejected identically to an unknown one.
+         */
+        post: operations["previewConnectorMapping"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1855,7 +1923,7 @@ export interface paths {
         };
         /**
          * List the published plan catalog
-         * @description Returns every PlanDefinition's current PlanVersion, its entitlement grants and every associated price. The catalog is platform-wide, not Organization-scoped — it is identical for every prospective subscriber and discloses nothing about any Organization — so it requires only a valid session, with no billing:manage check.
+         * @description Returns every PlanDefinition's current PlanVersion, its entitlement grants and every associated price. The catalog is platform-wide, not Organization-scoped — it is identical for every prospective subscriber and discloses nothing about any Organization — so it requires only a valid session, with no billing:manage check. One exception narrows presentation only: when the session's own organization holds a pricing-experiment assignment for a plan and has no subscription to that plan yet, that plan lists only the assigned price. The organization is always taken from the session, never from the request.
          */
         get: operations["listBillingPlans"];
         put?: never;
@@ -2020,6 +2088,11 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+            /**
+             * Format: date-time
+             * @description When the feature flag was archived, or null when it is active. Archiving is a soft state: the flag, its variations and all of its history remain readable, only its entitlement slot is released and its targeting disabled everywhere.
+             */
+            archived_at: string | null;
         };
         RolloutSplit: {
             variation_id: string;
@@ -2207,10 +2280,10 @@ export interface components {
         };
         CreateConnectorRequest: {
             name: string;
-            /** @enum {string} */
-            type: "http_pull";
-            /** @description Optional. Pins the Connector to a specific, registered version of type's response-parsing contract. Omitted resolves to the latest version registered for type at creation time. Immutable after creation. See the connectors capability spec for the currently registered versions per type. */
-            contract_version?: number;
+            /** @description The ContractTemplate this Connector's mapping comes from — either platform-scoped (usable by any Project) or project-scoped and owned by this same Project. */
+            template_id: string;
+            /** @description Optional. Pins the Connector to a specific, approved version of template_id. Omitted resolves to template_id's highest currently approved version at creation time. Immutable after creation except via an explicit later edit — see UpdateConnectorRequest. */
+            template_version?: number;
             source_url: string;
             secret: string;
             metric_definition_id: string;
@@ -2218,27 +2291,55 @@ export interface components {
         };
         UpdateConnectorRequest: {
             name: string;
-            /** @enum {string} */
-            type: "http_pull";
+            /** @description Optional. Omitted keeps the Connector's current template reference unchanged. Supplying a different (template_id, template_version) than the Connector currently has is the only way to recover a `broken` Connector to `active`. */
+            template_id?: string;
+            /** @description Optional. Only consulted when template_id is also supplied; omitted then resolves to template_id's highest currently approved version. */
+            template_version?: number;
             source_url: string;
             metric_definition_id: string;
             environment_id: string;
             /** @description Optional. A non-empty value rotates the pull secret; omitted or empty leaves the existing secret untouched. */
             secret?: string;
         };
+        PreviewMappingRequest: {
+            source_url: string;
+            /** @description Optional. Sent as a Bearer token to source_url, same as a Connector's own pull secret. */
+            secret?: string;
+            root_path: string;
+            value_field: string;
+            observed_at_field: string;
+            /** @enum {string} */
+            observed_at_format: "rfc3339" | "unix_ms";
+            subject_key_field?: string;
+        };
+        PreviewObservation: {
+            value: number;
+            /** Format: date-time */
+            observed_at: string;
+            subject_key?: string;
+        };
+        PreviewMappingResponse: {
+            /** @description The raw, JSON-parsed response fetched from source_url. */
+            raw_response: unknown;
+            /** @description The Observations the mapping produces from raw_response. Absent when error is present. */
+            observations?: components["schemas"]["PreviewObservation"][];
+            /** @description Present instead of observations when the mapping fails to resolve against raw_response (e.g. a field path not found). raw_response is still returned in this case. */
+            error?: string;
+        };
         Connector: {
             id: string;
             project_id: string;
             name: string;
-            /** @enum {string} */
-            type: "http_pull";
-            /** @description The version of type's response-parsing contract this Connector is pinned to. Immutable after creation. */
-            contract_version: number;
+            template_id: string;
+            /** @description The version of template_id's mapping this Connector is pinned to. Changes only via an explicit edit. */
+            template_version: number;
             source_url: string;
             metric_definition_id: string;
             environment_id: string;
             /** @enum {string} */
-            status: "active" | "disabled";
+            status: "active" | "disabled" | "broken";
+            /** @description Never present here — the sibling `not` requirement excludes it. Declared only so that requirement references a defined property; see ConnectorCreated for when a response actually carries the plaintext secret. */
+            secret?: string;
             /**
              * @description Absent when this Connector has never been synced.
              * @enum {string}
@@ -2251,8 +2352,15 @@ export interface components {
             last_sync_at?: string;
             /** @description Absent on success or when this Connector has never been synced. */
             last_sync_error?: string;
+            /**
+             * @description Absent on success or when this Connector has never been synced. Only mapping_mismatch counts toward the automatic circuit breaker that transitions status to broken.
+             * @enum {string}
+             */
+            last_sync_failure_kind?: "unreachable" | "timeout" | "non_2xx" | "oversized" | "mapping_mismatch" | "internal_error";
             /** @description Absent when this Connector has never synced successfully. */
             last_sync_observation_count?: number;
+            /** @description Consecutive mapping_mismatch failures. Resets to zero on a successful sync; a transient failure leaves it unchanged. Reaching 3 transitions status to broken. */
+            consecutive_mapping_mismatches: number;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2262,15 +2370,14 @@ export interface components {
             id: string;
             project_id: string;
             name: string;
-            /** @enum {string} */
-            type: "http_pull";
-            /** @description The version of type's response-parsing contract this Connector is pinned to. Immutable after creation. */
-            contract_version: number;
+            template_id: string;
+            /** @description The version of template_id's mapping this Connector is pinned to. Changes only via an explicit edit. */
+            template_version: number;
             source_url: string;
             metric_definition_id: string;
             environment_id: string;
             /** @enum {string} */
-            status: "active" | "disabled";
+            status: "active" | "disabled" | "broken";
             /** @description The plaintext pull secret. Returned only in the creation response, or an update response that rotated it; no other response ever includes it. */
             secret: string;
             /**
@@ -2285,8 +2392,15 @@ export interface components {
             last_sync_at?: string;
             /** @description Absent on success or when this Connector has never been synced. */
             last_sync_error?: string;
+            /**
+             * @description Absent on success or when this Connector has never been synced. Only mapping_mismatch counts toward the automatic circuit breaker that transitions status to broken.
+             * @enum {string}
+             */
+            last_sync_failure_kind?: "unreachable" | "timeout" | "non_2xx" | "oversized" | "mapping_mismatch" | "internal_error";
             /** @description Absent when this Connector has never synced successfully. */
             last_sync_observation_count?: number;
+            /** @description Consecutive mapping_mismatch failures. Resets to zero on a successful sync; a transient failure leaves it unchanged. Reaching 3 transitions status to broken. */
+            consecutive_mapping_mismatches: number;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -3854,6 +3968,8 @@ export interface operations {
                 limit?: number;
                 /** @description Rows to skip in the newest-first ordering. Defaults to 0. */
                 offset?: number;
+                /** @description Include archived feature flags. Defaults to false, so the listing returns only the active set. This only changes which rows of the caller's own already-authorized project are returned, never which project can be queried. */
+                include_archived?: boolean;
             };
             header?: never;
             path: {
@@ -3890,7 +4006,8 @@ export interface operations {
                      *             }
                      *           ],
                      *           "created_at": "2026-01-01T12:00:00Z",
-                     *           "updated_at": "2026-01-01T12:00:00Z"
+                     *           "updated_at": "2026-01-01T12:00:00Z",
+                     *           "archived_at": null
                      *         }
                      *       ],
                      *       "limit": 50,
@@ -3900,7 +4017,7 @@ export interface operations {
                     "application/json": components["schemas"]["ListFeatureFlagsResponse"];
                 };
             };
-            /** @description Invalid limit or offset. */
+            /** @description Invalid limit, offset or include_archived. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4012,7 +4129,8 @@ export interface operations {
                      *         }
                      *       ],
                      *       "created_at": "2026-01-01T12:00:00Z",
-                     *       "updated_at": "2026-01-01T12:00:00Z"
+                     *       "updated_at": "2026-01-01T12:00:00Z",
+                     *       "archived_at": null
                      *     }
                      */
                     "application/json": components["schemas"]["FeatureFlag"];
@@ -4129,7 +4247,8 @@ export interface operations {
                      *         }
                      *       ],
                      *       "created_at": "2026-01-01T12:00:00Z",
-                     *       "updated_at": "2026-01-01T12:00:00Z"
+                     *       "updated_at": "2026-01-01T12:00:00Z",
+                     *       "archived_at": null
                      *     }
                      */
                     "application/json": components["schemas"]["FeatureFlag"];
@@ -4164,6 +4283,174 @@ export interface operations {
                      *       "error": {
                      *         "code": "feature_flag_not_found",
                      *         "message": "Feature flag was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    archiveFeatureFlag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                feature_flag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Feature flag archived. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold feature-flags:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Feature flag was not found (or belongs to another Organization). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "feature_flag_not_found",
+                     *         "message": "Feature flag was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The feature flag is already archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "feature_flag_already_archived",
+                     *         "message": "This feature flag is already archived.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    unarchiveFeatureFlag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                feature_flag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Feature flag unarchived. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization has no available feature flag slot for the current plan, so the feature flag remains archived. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "entitlement_limit_exceeded",
+                     *         "message": "This organization has reached its feature flag limit for the current plan.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold feature-flags:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Feature flag was not found (or belongs to another Organization). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "feature_flag_not_found",
+                     *         "message": "Feature flag was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The feature flag is not archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "feature_flag_not_archived",
+                     *         "message": "This feature flag is not archived.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -5351,7 +5638,7 @@ export interface operations {
                 /**
                  * @example {
                  *       "name": "Billing metrics",
-                 *       "type": "http_pull",
+                 *       "template_id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
                  *       "source_url": "https://billing.example.com/metrics",
                  *       "secret": "s3cr3t",
                  *       "metric_definition_id": "018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f",
@@ -5373,12 +5660,13 @@ export interface operations {
                      *       "id": "018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f",
                      *       "project_id": "018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f",
                      *       "name": "Billing metrics",
-                     *       "type": "http_pull",
-                     *       "contract_version": 2,
+                     *       "template_id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "template_version": 1,
                      *       "source_url": "https://billing.example.com/metrics",
                      *       "metric_definition_id": "018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f",
                      *       "environment_id": "018f2f3a-b000-7000-9c3a-1f2b3c4d5e6f",
                      *       "status": "active",
+                     *       "consecutive_mapping_mismatches": 0,
                      *       "secret": "s3cr3t",
                      *       "created_at": "2026-01-01T12:00:00Z",
                      *       "updated_at": "2026-01-01T12:00:00Z"
@@ -5387,7 +5675,7 @@ export interface operations {
                     "application/json": components["schemas"]["ConnectorCreated"];
                 };
             };
-            /** @description Validation error (malformed JSON, missing fields, invalid type, an unsupported contract_version for the given type, the MetricDefinition/Environment belongs to a different Project, or the Project has reached the maximum number of Connectors). */
+            /** @description Validation error (malformed JSON, missing fields, an unapproved or nonexistent template_version, the MetricDefinition/Environment belongs to a different Project, or the Project has reached the maximum number of Connectors). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -5425,6 +5713,96 @@ export interface operations {
                      *       "error": {
                      *         "code": "project_not_found",
                      *         "message": "Project was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    previewConnectorMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "source_url": "https://billing.example.com/metrics",
+                 *       "secret": "s3cr3t",
+                 *       "root_path": ".",
+                 *       "value_field": "amount",
+                 *       "observed_at_field": "observed_at",
+                 *       "observed_at_format": "rfc3339"
+                 *     }
+                 */
+                "application/json": components["schemas"]["PreviewMappingRequest"];
+            };
+        };
+        responses: {
+            /** @description The source was fetched successfully. observations is present on a resolved mapping; error is present instead when a mapping field failed to resolve — raw_response is always present either way. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewMappingResponse"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold connectors:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Project was not found, or belongs to another Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "project_not_found",
+                     *         "message": "Project was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description source_url could not be fetched (unreachable, timed out, returned a non-2xx status, or exceeded the response size limit). */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "connector_preview_fetch_failed",
+                     *         "message": "httpclient: non-success status 500",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -5506,7 +5884,6 @@ export interface operations {
                 /**
                  * @example {
                  *       "name": "Billing metrics (renamed)",
-                 *       "type": "http_pull",
                  *       "source_url": "https://billing.example.com/metrics",
                  *       "metric_definition_id": "018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f",
                  *       "environment_id": "018f2f3a-b000-7000-9c3a-1f2b3c4d5e6f"
@@ -11406,12 +11783,21 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The subscription is not in a state that allows this change. */
+            /** @description The subscription is not in a state that allows this change (`billing_subscription_conflict`), or the selected `price_id` is not the one this organization's pricing-experiment assignment offers for the target plan (`price_not_assigned`, which applies only until the organization's first subscription to that plan). */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "price_not_assigned",
+                     *         "message": "This organization may only subscribe to its assigned price for this plan.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };

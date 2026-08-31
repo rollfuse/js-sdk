@@ -501,7 +501,8 @@
       "key",
       "variations",
       "created_at",
-      "updated_at"
+      "updated_at",
+      "archived_at"
     ],
     "properties": {
       "id": {
@@ -529,6 +530,14 @@
       "updated_at": {
         "type": "string",
         "format": "date-time"
+      },
+      "archived_at": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time",
+        "description": "When the feature flag was archived, or null when it is active. Archiving is a soft state: the flag, its variations and all of its history remain readable, only its entitlement slot is released and its targeting disabled everywhere."
       }
     }
   },
@@ -1173,7 +1182,7 @@
     "type": "object",
     "required": [
       "name",
-      "type",
+      "template_id",
       "source_url",
       "secret",
       "metric_definition_id",
@@ -1183,15 +1192,13 @@
       "name": {
         "type": "string"
       },
-      "type": {
+      "template_id": {
         "type": "string",
-        "enum": [
-          "http_pull"
-        ]
+        "description": "The ContractTemplate this Connector's mapping comes from — either platform-scoped (usable by any Project) or project-scoped and owned by this same Project."
       },
-      "contract_version": {
+      "template_version": {
         "type": "integer",
-        "description": "Optional. Pins the Connector to a specific, registered version of type's response-parsing contract. Omitted resolves to the latest version registered for type at creation time. Immutable after creation. See the connectors capability spec for the currently registered versions per type."
+        "description": "Optional. Pins the Connector to a specific, approved version of template_id. Omitted resolves to template_id's highest currently approved version at creation time. Immutable after creation except via an explicit later edit — see UpdateConnectorRequest."
       },
       "source_url": {
         "type": "string"
@@ -1211,7 +1218,6 @@
     "type": "object",
     "required": [
       "name",
-      "type",
       "source_url",
       "metric_definition_id",
       "environment_id"
@@ -1220,11 +1226,13 @@
       "name": {
         "type": "string"
       },
-      "type": {
+      "template_id": {
         "type": "string",
-        "enum": [
-          "http_pull"
-        ]
+        "description": "Optional. Omitted keeps the Connector's current template reference unchanged. Supplying a different (template_id, template_version) than the Connector currently has is the only way to recover a `broken` Connector to `active`."
+      },
+      "template_version": {
+        "type": "integer",
+        "description": "Optional. Only consulted when template_id is also supplied; omitted then resolves to template_id's highest currently approved version."
       },
       "source_url": {
         "type": "string"
@@ -1241,18 +1249,103 @@
       }
     }
   },
+  "PreviewMappingRequest": {
+    "type": "object",
+    "required": [
+      "source_url",
+      "root_path",
+      "value_field",
+      "observed_at_field",
+      "observed_at_format"
+    ],
+    "properties": {
+      "source_url": {
+        "type": "string"
+      },
+      "secret": {
+        "type": "string",
+        "description": "Optional. Sent as a Bearer token to source_url, same as a Connector's own pull secret."
+      },
+      "root_path": {
+        "type": "string"
+      },
+      "value_field": {
+        "type": "string"
+      },
+      "observed_at_field": {
+        "type": "string"
+      },
+      "observed_at_format": {
+        "type": "string",
+        "enum": [
+          "rfc3339",
+          "unix_ms"
+        ]
+      },
+      "subject_key_field": {
+        "type": "string"
+      }
+    }
+  },
+  "PreviewObservation": {
+    "type": "object",
+    "required": [
+      "value",
+      "observed_at"
+    ],
+    "properties": {
+      "value": {
+        "type": "number"
+      },
+      "observed_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "subject_key": {
+        "type": "string"
+      }
+    }
+  },
+  "PreviewMappingResponse": {
+    "type": "object",
+    "required": [
+      "raw_response"
+    ],
+    "properties": {
+      "raw_response": {
+        "description": "The raw, JSON-parsed response fetched from source_url."
+      },
+      "observations": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/PreviewObservation"
+        },
+        "description": "The Observations the mapping produces from raw_response. Absent when error is present."
+      },
+      "error": {
+        "type": "string",
+        "description": "Present instead of observations when the mapping fails to resolve against raw_response (e.g. a field path not found). raw_response is still returned in this case."
+      }
+    }
+  },
   "Connector": {
     "type": "object",
+    "not": {
+      "required": [
+        "secret"
+      ]
+    },
     "required": [
       "id",
       "project_id",
       "name",
-      "type",
-      "contract_version",
+      "template_id",
+      "template_version",
       "source_url",
       "metric_definition_id",
       "environment_id",
       "status",
+      "consecutive_mapping_mismatches",
       "created_at",
       "updated_at"
     ],
@@ -1266,15 +1359,12 @@
       "name": {
         "type": "string"
       },
-      "type": {
-        "type": "string",
-        "enum": [
-          "http_pull"
-        ]
+      "template_id": {
+        "type": "string"
       },
-      "contract_version": {
+      "template_version": {
         "type": "integer",
-        "description": "The version of type's response-parsing contract this Connector is pinned to. Immutable after creation."
+        "description": "The version of template_id's mapping this Connector is pinned to. Changes only via an explicit edit."
       },
       "source_url": {
         "type": "string"
@@ -1289,8 +1379,13 @@
         "type": "string",
         "enum": [
           "active",
-          "disabled"
+          "disabled",
+          "broken"
         ]
+      },
+      "secret": {
+        "type": "string",
+        "description": "Never present here — the sibling `not` requirement excludes it. Declared only so that requirement references a defined property; see ConnectorCreated for when a response actually carries the plaintext secret."
       },
       "last_sync_status": {
         "type": "string",
@@ -1309,9 +1404,25 @@
         "type": "string",
         "description": "Absent on success or when this Connector has never been synced."
       },
+      "last_sync_failure_kind": {
+        "type": "string",
+        "enum": [
+          "unreachable",
+          "timeout",
+          "non_2xx",
+          "oversized",
+          "mapping_mismatch",
+          "internal_error"
+        ],
+        "description": "Absent on success or when this Connector has never been synced. Only mapping_mismatch counts toward the automatic circuit breaker that transitions status to broken."
+      },
       "last_sync_observation_count": {
         "type": "integer",
         "description": "Absent when this Connector has never synced successfully."
+      },
+      "consecutive_mapping_mismatches": {
+        "type": "integer",
+        "description": "Consecutive mapping_mismatch failures. Resets to zero on a successful sync; a transient failure leaves it unchanged. Reaching 3 transitions status to broken."
       },
       "created_at": {
         "type": "string",
@@ -1329,12 +1440,13 @@
       "id",
       "project_id",
       "name",
-      "type",
-      "contract_version",
+      "template_id",
+      "template_version",
       "source_url",
       "metric_definition_id",
       "environment_id",
       "status",
+      "consecutive_mapping_mismatches",
       "secret",
       "created_at",
       "updated_at"
@@ -1349,15 +1461,12 @@
       "name": {
         "type": "string"
       },
-      "type": {
-        "type": "string",
-        "enum": [
-          "http_pull"
-        ]
+      "template_id": {
+        "type": "string"
       },
-      "contract_version": {
+      "template_version": {
         "type": "integer",
-        "description": "The version of type's response-parsing contract this Connector is pinned to. Immutable after creation."
+        "description": "The version of template_id's mapping this Connector is pinned to. Changes only via an explicit edit."
       },
       "source_url": {
         "type": "string"
@@ -1372,7 +1481,8 @@
         "type": "string",
         "enum": [
           "active",
-          "disabled"
+          "disabled",
+          "broken"
         ]
       },
       "secret": {
@@ -1396,9 +1506,25 @@
         "type": "string",
         "description": "Absent on success or when this Connector has never been synced."
       },
+      "last_sync_failure_kind": {
+        "type": "string",
+        "enum": [
+          "unreachable",
+          "timeout",
+          "non_2xx",
+          "oversized",
+          "mapping_mismatch",
+          "internal_error"
+        ],
+        "description": "Absent on success or when this Connector has never been synced. Only mapping_mismatch counts toward the automatic circuit breaker that transitions status to broken."
+      },
       "last_sync_observation_count": {
         "type": "integer",
         "description": "Absent when this Connector has never synced successfully."
+      },
+      "consecutive_mapping_mismatches": {
+        "type": "integer",
+        "description": "Consecutive mapping_mismatch failures. Resets to zero on a successful sync; a transient failure leaves it unchanged. Reaching 3 transitions status to broken."
       },
       "created_at": {
         "type": "string",
@@ -2062,14 +2188,18 @@
         "format": "date-time"
       },
       "accepted_at": {
-        "type": "string",
-        "format": "date-time",
-        "nullable": true
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
       },
       "revoked_at": {
-        "type": "string",
-        "format": "date-time",
-        "nullable": true
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
       }
     }
   },
