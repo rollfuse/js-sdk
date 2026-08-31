@@ -12,6 +12,7 @@ describe("validateSchema", () => {
       variations: [{ id: "var_1", key: "on", value: true }],
       created_at: "2026-01-01T00:00:00Z",
       updated_at: "2026-01-01T00:00:00Z",
+      archived_at: null,
     };
 
     expect(validateSchema("FeatureFlag", value)).toBe(true);
@@ -26,6 +27,7 @@ describe("validateSchema", () => {
       variations: [],
       created_at: "2026-01-01T00:00:00Z",
       updated_at: "2026-01-01T00:00:00Z",
+      archived_at: null,
     };
 
     expect(validateSchema("FeatureFlag", value)).toBe(false);
