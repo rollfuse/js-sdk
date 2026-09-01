@@ -1,6 +1,6 @@
 {
   "name": "@rollfuse/contracts",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "TypeScript types generated from apps/api/openapi/openapi.yaml, for consumption by @rollfuse/sdk-js and other TypeScript clients.",
   "type": "module",
   "publishConfig": {
