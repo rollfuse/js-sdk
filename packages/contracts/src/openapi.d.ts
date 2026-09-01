@@ -2454,7 +2454,7 @@ export interface components {
             value_field: string;
             observed_at_field: string;
             /** @enum {string} */
-            observed_at_format: "rfc3339" | "unix_ms";
+            observed_at_format: "rfc3339" | "unix_ms" | "unix_seconds";
             subject_key_field?: string;
         };
         ContractTemplateVersion: {
@@ -2465,7 +2465,7 @@ export interface components {
             value_field: string;
             observed_at_field: string;
             /** @enum {string} */
-            observed_at_format: "rfc3339" | "unix_ms";
+            observed_at_format: "rfc3339" | "unix_ms" | "unix_seconds";
             subject_key_field?: string;
             /** @enum {string} */
             review_status: "draft" | "submitted" | "approved" | "rejected";
@@ -2513,7 +2513,7 @@ export interface components {
             value_field: string;
             observed_at_field: string;
             /** @enum {string} */
-            observed_at_format: "rfc3339" | "unix_ms";
+            observed_at_format: "rfc3339" | "unix_ms" | "unix_seconds";
             subject_key_field?: string;
         };
         PreviewObservation: {

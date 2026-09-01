@@ -1263,7 +1263,8 @@
         "type": "string",
         "enum": [
           "rfc3339",
-          "unix_ms"
+          "unix_ms",
+          "unix_seconds"
         ]
       },
       "subject_key_field": {
@@ -1308,7 +1309,8 @@
         "type": "string",
         "enum": [
           "rfc3339",
-          "unix_ms"
+          "unix_ms",
+          "unix_seconds"
         ]
       },
       "subject_key_field": {
@@ -1463,7 +1465,8 @@
         "type": "string",
         "enum": [
           "rfc3339",
-          "unix_ms"
+          "unix_ms",
+          "unix_seconds"
         ]
       },
       "subject_key_field": {
