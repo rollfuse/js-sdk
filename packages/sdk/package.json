@@ -1,0 +1,50 @@
+{
+  "name": "@rollfuse/sdk-js",
+  "version": "0.1.1",
+  "description": "Node.js SDK that evaluates Growth Operations Platform feature flags locally against cached, versioned configuration (ADR 0004: Evaluate Flags Locally in SDKs).",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@rollfuse/contracts": "^0.2.2",
+    "@rollfuse/evaluation-core": "^0.2.0",
+    "undici": "8.10.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.3.0",
+    "eslint": "10.8.0",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.11"
+  }
+}
