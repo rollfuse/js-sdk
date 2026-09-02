@@ -1,0 +1,77 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+context: |
+  Tech stack: TypeScript, npm workspaces monorepo (no bundler beyond
+  tsup for each package's own dual ESM+CJS build).
+
+  Domain: the JS/TS client-side family for the rollfuse feature-flag
+  platform — five packages (contracts, evaluation-core, sdk, sdk-browser,
+  sdk-react), extracted together from the rollfuse/rollfuse application
+  monorepo (extract-js-sdk-monorepo), preserving each package's full
+  commit history. This repository has no HTTP server, no database, and
+  no multi-tenant request handling of its own; sdk and sdk-browser each
+  hold a credential (Service Credential / Public Credential respectively)
+  on behalf of the integrating application and call rollfuse/rollfuse's
+  API (GET /v1/config, POST /v1/evaluate, POST /v1/exposure-events).
+
+  Cross-repo parity constraint: evaluation-core's bucketing algorithm
+  MUST match rollfuse/rollfuse's API and github.com/rollfuse/go-sdk bit
+  for bit. packages/evaluation-core/test/fixtures/bucketing-vectors.json
+  is a checked-in mirror of that monorepo's
+  apps/api/internal/evaluation/domain/testdata/bucketing-vectors.json
+  (the source of truth, generated from apps/api's own Bucket()) — kept
+  from drifting by rollfuse/rollfuse's own CI
+  (scripts/check-bucketing-fixture-drift.sh), which fetches this repo's
+  copy and diffs it. Any change to bucketing.ts's output requires
+  coordinating a fixture update on both sides; never edit
+  bucketing-vectors.json to make a bucketing change pass without first
+  regenerating it from the monorepo's source of truth.
+
+  Similarly, packages/contracts/openapi/openapi.yaml is a checked-in
+  mirror of rollfuse/rollfuse's apps/api/openapi/openapi.yaml, kept from
+  drifting by that monorepo's scripts/check-openapi-fixture-drift.sh.
+
+  Every requirement in openspec/specs/{sdk-js,sdk-react,sdk-trace-propagation}/spec.md
+  is a portable behavioral contract; rollfuse/rollfuse's
+  platform-conformance-harness (its JS driver, tools/harness/js) exercises
+  packages/sdk directly, over the network, against a real environment. A
+  spec change here that changes observable behavior should be
+  cross-checked against that harness's expectations before release.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+rules:
+  design:
+    - A change to bucketing behavior (packages/evaluation-core/src/bucketing.ts)
+      or its inputs must state how bucketing-vectors.json is kept in sync
+      with rollfuse/rollfuse's source-of-truth fixture, since this repo
+      does not generate that fixture itself.
+    - A change to packages/contracts's generated types must state how
+      openapi/openapi.yaml is kept in sync with rollfuse/rollfuse's
+      source-of-truth OpenAPI document.
+  tasks:
+    - Every task touching bucketing, evaluation, or exposure-queue timer
+      behavior must include a real `npm test` verification step for every
+      affected package, not just a build/typecheck.
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
