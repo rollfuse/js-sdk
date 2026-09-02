@@ -1,0 +1,360 @@
+import type { Configuration } from "@rollfuse/contracts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RollfusePublicClient } from "../src/client.js";
+import { ConfigNotReadyError, FlagNotFoundError, PublicCredentialRequiredError } from "../src/errors.js";
+
+const validConfig: Configuration = {
+  environment_id: "env_1",
+  version: 3,
+  flags: [
+    {
+      flag_key: "checkout-redesign",
+      enabled: true,
+      default_variation: "off",
+      variations: [
+        { key: "on", value: true },
+        { key: "off", value: false },
+      ],
+      rules: [
+        { conditions: [{ attribute: "plan", value: "enterprise" }], outcome: { variation_key: "on" } },
+      ],
+    },
+    {
+      flag_key: "always-off",
+      enabled: false,
+      default_variation: "off",
+      variations: [{ key: "off", value: false }],
+      rules: [],
+    },
+  ],
+};
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("RollfusePublicClient", () => {
+  describe("Explicit Public Credential Configuration", () => {
+    it("throws PublicCredentialRequiredError when constructed without a publicCredential", () => {
+      expect(() => new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "" })).toThrow(
+        PublicCredentialRequiredError,
+      );
+    });
+
+    it("never offers a `credential` option shaped like a regular Service Credential", () => {
+      const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred" });
+
+      // The only credential-shaped key on the options this class accepts
+      // is `publicCredential` — this is a type-level guarantee (see
+      // RollfusePublicClientOptions), not one enq at runtime. This test
+      // just documents that construction succeeds with the correctly-
+      // named option.
+      expect(client).toBeInstanceOf(RollfusePublicClient);
+    });
+  });
+
+  describe("Safe Fallback Behavior", () => {
+    it("returns the fallback value when no Configuration has been fetched yet", () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+
+      // start() not called/awaited: no Configuration is cached yet.
+      const result = client.evaluate("user_1", "checkout-redesign", { fallback: "fallback-value" });
+
+      expect(result.value).toBe("fallback-value");
+      expect(result.reason).toBe("default_fallback");
+      expect(result.track_exposure).toBe(false);
+    });
+
+    it("throws ConfigNotReadyError when no Configuration is cached and no fallback is supplied", () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+
+      expect(() => client.evaluate("user_1", "checkout-redesign")).toThrow(ConfigNotReadyError);
+    });
+
+    it("evaluateAll throws ConfigNotReadyError when no Configuration is cached", () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+
+      expect(() => client.evaluateAll("user_1")).toThrow(ConfigNotReadyError);
+    });
+
+    it("throws FlagNotFoundError for an unknown flag key once Configuration is cached, absent a fallback", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+
+      await client.start();
+
+      expect(() => client.evaluate("user_1", "does-not-exist")).toThrow(FlagNotFoundError);
+
+      client.stop();
+    });
+  });
+
+  describe("Failure Isolation From Platform Unavailability", () => {
+    it("keeps evaluating successfully after a refresh failure, using the last-known-good config", async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(validConfig))
+        .mockRejectedValue(new Error("network down"));
+
+      const client = new RollfusePublicClient({
+        baseUrl: "http://api.test",
+        publicCredential: "pub_cred",
+        refreshIntervalMs: 5_000,
+        fetchImpl,
+      });
+
+      await client.start();
+
+      await vi.advanceTimersByTimeAsync(5_000); // scheduled refresh fails
+
+      const result = client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } });
+
+      expect(result.variation_key).toBe("on");
+      expect(result.reason).toBe("rule_match");
+
+      client.stop();
+    });
+  });
+
+  describe("Deterministic Local Evaluation", () => {
+    it("evaluate does not perform a network request", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+
+      await client.start();
+
+      const callsBeforeEvaluate = fetchImpl.mock.calls.length;
+
+      client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } });
+
+      expect(fetchImpl.mock.calls.length).toBe(callsBeforeEvaluate);
+
+      client.stop();
+    });
+
+    it("evaluateAll returns a result for every flag in the Configuration", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+
+      await client.start();
+
+      const results = client.evaluateAll("user_1");
+
+      expect(results.map((r) => r.flag_key).sort()).toEqual(["always-off", "checkout-redesign"]);
+
+      client.stop();
+    });
+  });
+
+  describe("Asynchronous, Best-Effort Exposure Reporting", () => {
+    it("enqueues an exposure for a rule-matched evaluation without blocking evaluate", async () => {
+      const configFetch = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const exposureFetch = vi.fn().mockResolvedValue(jsonResponse({ accepted: 1 }));
+
+      const fetchImpl = vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith("/v1/exposure-events")) {
+          return exposureFetch(url, init);
+        }
+
+        return configFetch(url, init);
+      });
+
+      const client = new RollfusePublicClient({
+        baseUrl: "http://api.test",
+        publicCredential: "pub_cred",
+        exposureBatchSize: 1,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+
+      await client.start();
+
+      const result = client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } });
+      expect(result.track_exposure).toBe(true);
+
+      // Batch size 1 triggers an immediate flush; await a microtask turn
+      // for that fire-and-forget flush to actually run.
+      await vi.waitFor(() => expect(exposureFetch).toHaveBeenCalledTimes(1));
+
+      const body = JSON.parse((exposureFetch.mock.calls[0][1] as RequestInit).body as string);
+      expect(body.events).toHaveLength(1);
+      expect(body.events[0]).toMatchObject({
+        flag_key: "checkout-redesign",
+        subject_key: "user_1",
+        variation_key: "on",
+        reason: "rule_match",
+        config_version: 3,
+      });
+
+      client.stop();
+    });
+
+    it("does not enqueue an exposure for a default/fallback evaluation", async () => {
+      const exposureFetch = vi.fn().mockResolvedValue(jsonResponse({ accepted: 0 }));
+      const fetchImpl = vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith("/v1/exposure-events")) {
+          return exposureFetch(url, init);
+        }
+
+        return Promise.resolve(jsonResponse(validConfig));
+      });
+
+      const client = new RollfusePublicClient({
+        baseUrl: "http://api.test",
+        publicCredential: "pub_cred",
+        exposureBatchSize: 1,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+
+      await client.start();
+
+      // "always-off" is disabled: default path, no exposure.
+      const result = client.evaluate("user_1", "always-off");
+      expect(result.track_exposure).toBe(false);
+
+      client.stop();
+      expect(exposureFetch).not.toHaveBeenCalled();
+    });
+
+    it("a submission failure does not affect the already-returned evaluate result", async () => {
+      const exposureFetch = vi.fn().mockRejectedValue(new Error("network down"));
+      const onExposureSubmitError = vi.fn();
+
+      const fetchImpl = vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith("/v1/exposure-events")) {
+          return exposureFetch(url, init);
+        }
+
+        return Promise.resolve(jsonResponse(validConfig));
+      });
+
+      const client = new RollfusePublicClient({
+        baseUrl: "http://api.test",
+        publicCredential: "pub_cred",
+        exposureBatchSize: 1,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        onExposureSubmitError,
+      });
+
+      await client.start();
+
+      const result = client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } });
+
+      await vi.waitFor(() => expect(onExposureSubmitError).toHaveBeenCalledTimes(1));
+
+      // The result returned synchronously by evaluate() is unaffected by
+      // the later, asynchronous submission failure.
+      expect(result.variation_key).toBe("on");
+      expect(result.reason).toBe("rule_match");
+
+      client.stop();
+    });
+
+    it("a full exposure queue drops rather than blocks, and reports the drop", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const onExposureDropped = vi.fn();
+
+      const client = new RollfusePublicClient({
+        baseUrl: "http://api.test",
+        publicCredential: "pub_cred",
+        exposureQueueCapacity: 1,
+        exposureBatchSize: 1_000_000, // never auto-flush during this test
+        fetchImpl,
+        onExposureDropped,
+      });
+
+      await client.start();
+
+      client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } });
+      client.evaluate("user_2", "checkout-redesign", { attributes: { plan: "enterprise" } });
+
+      expect(onExposureDropped).toHaveBeenCalledWith(1);
+
+      client.stop();
+    });
+  });
+
+  describe("Live Subscription (for sdk-react's client-driven Provider mode)", () => {
+    it("notifies subscribers after each successful Configuration refresh", async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(validConfig))
+        .mockResolvedValueOnce(jsonResponse({ ...validConfig, version: 4 }));
+
+      const client = new RollfusePublicClient({
+        baseUrl: "http://api.test",
+        publicCredential: "pub_cred",
+        refreshIntervalMs: 1_000,
+        fetchImpl,
+      });
+
+      const listener = vi.fn();
+      client.subscribe(listener);
+
+      await client.start();
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(listener).toHaveBeenCalledTimes(2);
+
+      client.stop();
+    });
+
+    it("an unsubscribed listener is not notified of later refreshes", async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(validConfig))
+        .mockResolvedValueOnce(jsonResponse({ ...validConfig, version: 4 }));
+
+      const client = new RollfusePublicClient({
+        baseUrl: "http://api.test",
+        publicCredential: "pub_cred",
+        refreshIntervalMs: 1_000,
+        fetchImpl,
+      });
+
+      const listener = vi.fn();
+      const unsubscribe = client.subscribe(listener);
+
+      await client.start();
+      unsubscribe();
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(listener).toHaveBeenCalledTimes(1); // only the initial fetch, before unsubscribe
+
+      client.stop();
+    });
+
+    it("still invokes the caller-supplied onConfigRefreshed callback alongside subscribers", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const onConfigRefreshed = vi.fn();
+
+      const client = new RollfusePublicClient({
+        baseUrl: "http://api.test",
+        publicCredential: "pub_cred",
+        fetchImpl,
+        onConfigRefreshed,
+      });
+
+      const listener = vi.fn();
+      client.subscribe(listener);
+
+      await client.start();
+
+      expect(onConfigRefreshed).toHaveBeenCalledWith(3);
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      client.stop();
+    });
+  });
+});
