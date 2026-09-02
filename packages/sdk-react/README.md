@@ -1,10 +1,15 @@
 # @rollfuse/sdk-react
 
-React/Next.js consumption layer for rollfuse feature flags: a Provider fed by
-**server-evaluated** results, plus `useFlag`/`useFlags` hooks. It never
-imports `@rollfuse/sdk-js` and never accepts a Service Credential — that
-boundary is structural, not just documented, so this package can be safely
-bundled into browser code.
+React/Next.js consumption layer for [rollfuse](https://rollfuse.com)
+feature flags: a Provider fed by **server-evaluated** results, plus
+`useFlag`/`useFlags` hooks. It never imports `@rollfuse/sdk-js` and never
+accepts a Service Credential — that boundary is structural, not just
+documented, so this package can be safely bundled into browser code.
+Hydration-stable by design: the variation your server rendered is the same
+variation your client reads, no flicker.
+
+Part of the [rollfuse JS/TS SDK family](https://github.com/rollfuse/js-sdk)
+— see that repo's README if you're not sure which package you want.
 
 See `openspec/specs/sdk-react/spec.md` for its full behavioral contract.
 
@@ -151,16 +156,16 @@ Depends on `@rollfuse/contracts` (published separately to npm) for the
 
 ### Publishing
 
-From the repo root:
+This repo uses [Changesets](https://github.com/changesets/changesets) for
+independent per-package versioning:
 
 ```bash
-make sdk-bump pkg=sdk-react level=<patch|minor|major>   # opens a PR with the version bump
-# ...review and merge the PR...
-make sdk-release pkg=sdk-react                            # builds, gates, and publishes
+npx changeset            # describe your change, pick which package(s) and bump level
+# commit the generated .changeset/*.md file(s) with your PR
 ```
 
-`sdk-bump` runs lint/typecheck/test/audit, bumps `version`, and opens
-the PR; `sdk-release` re-runs the same gates, builds, and runs `npm
-publish`. `NPM_TOKEN` must be set in the calling shell (an npm
-Automation token, so 2FA/OTP prompts don't block the non-interactive
-publish step) — never written to a file.
+Merging to `main` opens or updates a "Version Packages" PR that applies
+every pending changeset (bumps `version`, updates `CHANGELOG.md`).
+Merging *that* PR publishes every package whose version changed to npm,
+automatically, via `.github/workflows/release.yml` (`NPM_TOKEN` configured
+as a repo secret) — no manual `npm publish` step.

@@ -1,14 +1,21 @@
 # @rollfuse/sdk-js
 
+The Node.js SDK for [rollfuse](https://rollfuse.com): evaluates feature
+flags locally against cached, versioned configuration (ADR 0004: Evaluate
+Flags Locally in SDKs), instead of calling the API synchronously on every
+evaluation. No SDK-side network call on the hot path — your request path
+never gets slower because a flag check needed an answer, and evaluation
+keeps working off the last-known-good configuration if the platform is
+briefly unreachable.
+
+Part of the [rollfuse JS/TS SDK family](https://github.com/rollfuse/js-sdk)
+— see that repo's README if you're not sure which package you want, or
+need the browser or React SDKs instead.
+
 > **Renamed from `@growth-ops/sdk-js`.** The package identifier and the
 > exported `GrowthOpsClient` class changed name — `GrowthOpsClient` is now
 > `RollfuseClient`. The client's behavior did not change; update your
 > `package.json` dependency, imports, and the constructor name.
-
-The Node.js SDK for rollfuse: evaluates feature flags
-locally against cached, versioned configuration (ADR 0004: Evaluate Flags
-Locally in SDKs), instead of calling the API synchronously on every
-evaluation.
 
 Server-side only — it holds a Service Credential secret, so it targets
 Node.js backends (Express apps, Next.js API routes, workers, etc.), not
@@ -84,16 +91,16 @@ request/response types.
 
 ### Publishing
 
-From the repo root:
+This repo uses [Changesets](https://github.com/changesets/changesets) for
+independent per-package versioning:
 
 ```bash
-make sdk-bump pkg=sdk-js level=<patch|minor|major>   # opens a PR with the version bump
-# ...review and merge the PR...
-make sdk-release pkg=sdk-js                            # builds, gates, and publishes
+npx changeset            # describe your change, pick which package(s) and bump level
+# commit the generated .changeset/*.md file(s) with your PR
 ```
 
-`sdk-bump` runs lint/typecheck/test/audit, bumps `version`, and opens
-the PR; `sdk-release` re-runs the same gates, builds, and runs `npm
-publish`. `NPM_TOKEN` must be set in the calling shell (an npm
-Automation token, so 2FA/OTP prompts don't block the non-interactive
-publish step) — never written to a file.
+Merging to `main` opens or updates a "Version Packages" PR that applies
+every pending changeset (bumps `version`, updates `CHANGELOG.md`).
+Merging *that* PR publishes every package whose version changed to npm,
+automatically, via `.github/workflows/release.yml` (`NPM_TOKEN` configured
+as a repo secret) — no manual `npm publish` step.

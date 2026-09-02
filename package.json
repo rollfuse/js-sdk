@@ -1,0 +1,23 @@
+{
+  "name": "js-sdk",
+  "private": true,
+  "description": "Rollfuse JS/TS SDK family: contracts, evaluation-core, and the server, browser, and React SDKs built on them.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "npm run build -w packages/contracts -w packages/evaluation-core -w packages/sdk -w packages/sdk-browser -w packages/sdk-react",
+    "typecheck": "npm run typecheck -w packages/contracts -w packages/evaluation-core -w packages/sdk -w packages/sdk-browser -w packages/sdk-react",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test -w packages/evaluation-core -w packages/sdk -w packages/sdk-browser -w packages/sdk-react --if-present",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "npm run build && changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.1"
+  }
+}

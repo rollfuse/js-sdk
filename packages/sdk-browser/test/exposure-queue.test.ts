@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveTraceHeaders } from "@rollfuse/evaluation-core";
 import { ExposureQueue } from "../src/exposure-queue.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -12,6 +13,16 @@ const sampleEvent = {
   reason: "rule_match",
   configVersion: 3,
 };
+
+beforeAll(async () => {
+  // `resolveTraceHeaders` does a dynamic `import("@opentelemetry/api")` on
+  // its first call, cached module-wide afterwards (trace-context.ts's
+  // `otelApiPromise`). That first lookup runs real, unmocked async I/O;
+  // warm it here under real timers so the fake-timer-driven tests below
+  // never race an in-flight module resolution against
+  // `advanceTimersByTimeAsync`'s bounded real-tick budget.
+  await resolveTraceHeaders();
+});
 
 beforeEach(() => {
   vi.useFakeTimers();

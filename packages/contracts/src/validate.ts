@@ -44,7 +44,7 @@ function validatorFor(schemaName: string): ValidateFunction {
 
   if (!validator) {
     throw new Error(
-      `validateSchema: no schema named "${schemaName}" in schemas.json — check the spelling against apps/api/openapi/openapi.yaml's components.schemas keys.`,
+      `validateSchema: no schema named "${schemaName}" in schemas.json — check the spelling against openapi/openapi.yaml's components.schemas keys.`,
     );
   }
 
@@ -55,7 +55,7 @@ function validatorFor(schemaName: string): ValidateFunction {
 
 /**
  * Validates value against the named OpenAPI schema (a key under
- * `components.schemas` in `apps/api/openapi/openapi.yaml`). Compiled
+ * `components.schemas` in `openapi/openapi.yaml`). Compiled
  * lazily on first use per schema name, then memoized — call sites don't
  * need to manage validator lifecycle themselves.
  */

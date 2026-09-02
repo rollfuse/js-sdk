@@ -1,7 +1,7 @@
 {
   "name": "@rollfuse/contracts",
   "version": "0.6.1",
-  "description": "TypeScript types generated from apps/api/openapi/openapi.yaml, for consumption by @rollfuse/sdk-js and other TypeScript clients.",
+  "description": "TypeScript types generated from openapi/openapi.yaml (a checked-in mirror of the rollfuse platform's OpenAPI document), for consumption by @rollfuse/sdk-js and other TypeScript clients.",
   "type": "module",
   "publishConfig": {
     "access": "public"
@@ -18,7 +18,7 @@
     "dist"
   ],
   "scripts": {
-    "generate": "openapi-typescript ../../apps/api/openapi/openapi.yaml -o src/openapi.d.ts && node scripts/extract-schemas.mjs",
+    "generate": "openapi-typescript openapi/openapi.yaml -o src/openapi.d.ts && node scripts/extract-schemas.mjs",
     "build": "tsc -p tsconfig.json && cp src/openapi.d.ts dist/openapi.d.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",

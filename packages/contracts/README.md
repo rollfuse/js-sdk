@@ -1,15 +1,20 @@
 # @rollfuse/contracts
 
+TypeScript types generated from [rollfuse](https://rollfuse.com)'s
+`openapi/openapi.yaml`, plus a runtime schema validator, for
+`@rollfuse/sdk-js` and any other TypeScript client that needs the
+platform's request/response shapes without hand-writing them — and without
+only *hoping* a hand-written type still matches what the API actually
+returns.
+
+Part of the [rollfuse JS/TS SDK family](https://github.com/rollfuse/js-sdk)
+— most apps want `@rollfuse/sdk-js`, `@rollfuse/sdk-browser`, or
+`@rollfuse/sdk-react` instead of depending on this package directly.
+
 > **Renamed from `@growth-ops/contracts`.** The package identifier changed;
 > the API it wraps did not. Update your `package.json` dependency and
 > imports from `@growth-ops/contracts` to `@rollfuse/contracts` — no other
 > code change is required.
-
-TypeScript types generated from `apps/api/openapi/openapi.yaml`, plus a
-runtime schema validator, for `@rollfuse/sdk-js`, `apps/web`, and any other
-TypeScript client that needs the platform's request/response shapes
-without hand-writing them — and without only *hoping* a hand-written type
-still matches what the API actually returns.
 
 Published to the public npm registry; consumers depend on the published
 version (`^0.2.x`), not a local workspace/`file:` link — bump the version,
@@ -23,7 +28,7 @@ just republishing.)
 
 - `src/openapi.d.ts`: the full, mechanically generated output of
   [`openapi-typescript`](https://openapi-ts.dev/) run against
-  `apps/api/openapi/openapi.yaml`. Do not hand-edit this file. Copied into
+  `openapi/openapi.yaml`. Do not hand-edit this file. Copied into
   `dist/openapi.d.ts` at build time (see "Building" below) — every other
   generated `.d.ts` file references it by relative import, so the built
   package must carry its own copy, not just the `src/` original.
@@ -61,7 +66,7 @@ Generation is a manual, reviewed step — it does not run automatically in
 CI or as part of any other package's build, matching this repo's existing
 discipline around explicit, reviewed schema changes (see
 `docs/adr/` for the precedent on migrations). After changing
-`apps/api/openapi/openapi.yaml`:
+`openapi/openapi.yaml`:
 
 ```bash
 npm run generate   # rewrites src/openapi.d.ts, src/schemas.json, src/openapi-schemas.ts
@@ -82,20 +87,21 @@ npm run lint
 npm test
 ```
 
-To ship a change to consumers, from the repo root:
+To ship a change to consumers, this repo uses
+[Changesets](https://github.com/changesets/changesets) for independent
+per-package versioning:
 
 ```bash
-make sdk-bump pkg=contracts level=<patch|minor|major>   # opens a PR with the version bump
-# ...review and merge the PR...
-make sdk-release pkg=contracts                            # builds, gates, and publishes
+npx changeset            # describe your change, pick which package(s) and bump level
+# commit the generated .changeset/*.md file(s) with your PR
 ```
 
-`sdk-bump` runs lint/typecheck/test/audit, bumps `version` in
-`package.json` (`files` is `["dist"]` only — `src/` is not published,
-keeping the tarball small) and opens the PR; `sdk-release` re-runs the
-same gates, builds, and runs `npm publish`. `NPM_TOKEN` must be set in
-the calling shell (an npm Automation token, so 2FA/OTP prompts don't
-block the non-interactive publish step) — never written to a file. After
+Merging to `main` opens or updates a "Version Packages" PR that applies
+every pending changeset (bumps `version` in `package.json` — `files` is
+`["dist"]` only, `src/` is not published, keeping the tarball small).
+Merging *that* PR publishes every package whose version changed to npm,
+automatically, via `.github/workflows/release.yml` (`NPM_TOKEN`
+configured as a repo secret) — no manual `npm publish` step. After
 publishing, bump the declared `@rollfuse/contracts` range in each
-consumer and run `npm install` there (not automated — a separate,
-deliberate PR per consumer).
+downstream consumer and run `npm install` there (not automated — a
+separate, deliberate PR per consumer).

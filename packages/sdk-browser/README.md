@@ -1,10 +1,15 @@
 # @rollfuse/sdk-browser
 
-The browser SDK for rollfuse: evaluates feature flags directly in
-client-side JavaScript, locally against cached, versioned configuration —
-the same deterministic bucketing/evaluation algorithm
+The browser SDK for [rollfuse](https://rollfuse.com): evaluates feature
+flags directly in client-side JavaScript, locally against cached, versioned
+configuration — the same deterministic bucketing/evaluation algorithm
 `@rollfuse/sdk-js` uses, shared via `@rollfuse/evaluation-core` so the two
-packages can never silently drift.
+packages can never silently drift. No proxy, no server round trip on the
+evaluation path — just a fetch of published configuration, and every
+`evaluate()` call after that is synchronous.
+
+Part of the [rollfuse JS/TS SDK family](https://github.com/rollfuse/js-sdk)
+— see that repo's README if you're not sure which package you want.
 
 ## Public Credential only — never a regular Service Credential
 
@@ -127,16 +132,16 @@ Depends on `@rollfuse/contracts` and `@rollfuse/evaluation-core`
 
 ### Publishing
 
-From the repo root:
+This repo uses [Changesets](https://github.com/changesets/changesets) for
+independent per-package versioning:
 
 ```bash
-make sdk-bump pkg=sdk-browser level=<patch|minor|major>   # opens a PR with the version bump
-# ...review and merge the PR...
-make sdk-release pkg=sdk-browser                            # builds, gates, and publishes
+npx changeset            # describe your change, pick which package(s) and bump level
+# commit the generated .changeset/*.md file(s) with your PR
 ```
 
-`sdk-bump` runs lint/typecheck/test/audit, bumps `version`, and opens
-the PR; `sdk-release` re-runs the same gates, builds, and runs `npm
-publish`. `NPM_TOKEN` must be set in the calling shell (an npm
-Automation token, so 2FA/OTP prompts don't block the non-interactive
-publish step) — never written to a file.
+Merging to `main` opens or updates a "Version Packages" PR that applies
+every pending changeset (bumps `version`, updates `CHANGELOG.md`).
+Merging *that* PR publishes every package whose version changed to npm,
+automatically, via `.github/workflows/release.yml` (`NPM_TOKEN` configured
+as a repo secret) — no manual `npm publish` step.
