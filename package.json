@@ -1,7 +1,7 @@
 {
   "name": "js-sdk",
   "private": true,
-  "description": "Rollfuse JS/TS SDK family: contracts, evaluation-core, and the server, browser, and React SDKs built on them.",
+  "description": "Rollfuse JS/TS SDK family: contracts, evaluation-core, the server/browser/React SDKs built on them, and an OpenFeature provider.",
   "workspaces": [
     "packages/*"
   ],
@@ -9,10 +9,10 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "npm run build -w packages/contracts -w packages/evaluation-core -w packages/sdk -w packages/sdk-browser -w packages/sdk-react",
-    "typecheck": "npm run typecheck -w packages/contracts -w packages/evaluation-core -w packages/sdk -w packages/sdk-browser -w packages/sdk-react",
+    "build": "npm run build -w packages/contracts -w packages/evaluation-core -w packages/sdk -w packages/sdk-browser -w packages/sdk-react -w packages/openfeature-provider",
+    "typecheck": "npm run typecheck -w packages/contracts -w packages/evaluation-core -w packages/sdk -w packages/sdk-browser -w packages/sdk-react -w packages/openfeature-provider",
     "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test -w packages/evaluation-core -w packages/sdk -w packages/sdk-browser -w packages/sdk-react --if-present",
+    "test": "npm run test -w packages/evaluation-core -w packages/sdk -w packages/sdk-browser -w packages/sdk-react -w packages/openfeature-provider --if-present",
     "changeset": "changeset",
     "changeset:status": "changeset status --verbose",
     "version": "changeset version",

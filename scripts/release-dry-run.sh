@@ -12,7 +12,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PACKAGES=(contracts evaluation-core sdk sdk-browser sdk-react)
+PACKAGES=(contracts evaluation-core sdk sdk-browser sdk-react openfeature-provider)
 
 echo "==> Building every package"
 (cd "$REPO_ROOT" && npm run build)

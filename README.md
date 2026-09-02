@@ -20,6 +20,7 @@ they're built and tested together.
 | A Node.js backend (Express, Fastify, a worker, a Next.js API route) | [`@rollfuse/sdk-js`](packages/sdk/) | A Service Credential (server-only secret) |
 | Client-side JavaScript that evaluates flags directly in the browser | [`@rollfuse/sdk-browser`](packages/sdk-browser/) | A Public Credential (safe to ship to a browser bundle) |
 | A Next.js / React app, fed by server-evaluated flags | [`@rollfuse/sdk-react`](packages/sdk-react/) | A server already using `@rollfuse/sdk-js` |
+| A Node.js backend already using [OpenFeature](https://openfeature.dev) | [`@rollfuse/openfeature-provider`](packages/openfeature-provider/) | A Service Credential — wraps `@rollfuse/sdk-js` |
 | Raw TypeScript types for the platform API, no evaluation logic | [`@rollfuse/contracts`](packages/contracts/) | Nothing — it's just types + a runtime validator |
 
 Most apps want exactly one of the first three. `@rollfuse/contracts` and
@@ -105,7 +106,7 @@ same variation, everywhere.
 
 ## What's in this repo
 
-An npm workspaces monorepo — five independently versioned packages, built
+An npm workspaces monorepo — six independently versioned packages, built
 and released together:
 
 - **[`packages/contracts`](packages/contracts/)** — TypeScript types
@@ -122,6 +123,10 @@ and released together:
   Public-Credential-only by construction.
 - **[`packages/sdk-react`](packages/sdk-react/)** — React/Next.js
   bindings: a Provider and `useFlag`/`useFlags` hooks.
+- **[`packages/openfeature-provider`](packages/openfeature-provider/)** —
+  an [OpenFeature](https://openfeature.dev) `Provider` implementation,
+  wrapping `packages/sdk` for apps that use OpenFeature's vendor-neutral
+  API.
 
 ## Development
 
