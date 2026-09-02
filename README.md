@@ -134,7 +134,44 @@ npm test
 ```
 
 Each package still ships and versions independently — see its own README
-for its release process. A local change to `evaluation-core` is picked up
-immediately by `sdk`/`sdk-browser`/`sdk-react` in this repo (real
-workspace links, not a registry round trip); publishing is what makes that
-change visible to everyone else.
+for a package-scoped summary. A local change to `evaluation-core` is
+picked up immediately by `sdk`/`sdk-browser`/`sdk-react` in this repo
+(real workspace links, not a registry round trip); publishing is what
+makes that change visible to everyone else.
+
+## Releasing
+
+This repo uses [Changesets](https://github.com/changesets/changesets) —
+every package versions and publishes independently, coordinated through
+one PR-based flow instead of a manual `npm publish` per package.
+
+**1. Record what changed, alongside your PR:**
+
+```bash
+npx changeset            # pick which package(s) changed and the bump level (patch/minor/major), write a summary
+# commit the generated .changeset/*.md file(s) with the rest of your change
+```
+
+A PR that changes a package's behavior without a changeset won't trigger a
+release for it — `npm run changeset:status` lists what's pending and flags
+a changed package with none.
+
+**2. Merge to `main`.** `.github/workflows/release.yml` then either:
+
+- opens or updates a **"Version Packages"** PR that applies every pending
+  changeset (bumps each affected package's `version`, updates its
+  `CHANGELOG.md`), if any changesets are pending; or
+- **publishes to npm**, automatically, once that PR is itself merged —
+  every package whose version changed in that PR, and only those.
+
+**3. Sanity-check before merging the Version Packages PR** (optional, but
+recommended for anything beyond a trivial patch):
+
+```bash
+npm run release:dry-run   # builds every package, then `npm publish --dry-run`s each — no real publish
+```
+
+Auth for the real, CI-driven publish comes from the `NPM_TOKEN` repository
+secret (an npm Automation token, so 2FA/OTP prompts never block the
+non-interactive publish step) — never written to disk, never needed
+locally unless you're deliberately publishing by hand outside CI.

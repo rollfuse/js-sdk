@@ -14,8 +14,10 @@
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test -w packages/evaluation-core -w packages/sdk -w packages/sdk-browser -w packages/sdk-react --if-present",
     "changeset": "changeset",
+    "changeset:status": "changeset status --verbose",
     "version": "changeset version",
-    "release": "npm run build && changeset publish"
+    "release": "npm run build && changeset publish",
+    "release:dry-run": "./scripts/release-dry-run.sh"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.1"
