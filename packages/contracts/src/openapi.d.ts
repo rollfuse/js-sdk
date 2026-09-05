@@ -84,6 +84,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/visitor/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a batch of visitor-journey events
+         * @description Unauthenticated — a visitor of the marketing site has no session. Rate limited per client IP. A batch whose consent block does not grant analytics is discarded and answered with the same 202 a stored batch receives, so a caller cannot tell stored state from discarded state. Consent is checked again against the stored consent record before anything is persisted.
+         */
+        post: operations["recordVisitorJourneyEvents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/visitor/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a visitor's cookie-consent decision
+         * @description Unauthenticated and rate limited per client IP. Every decision is accepted, including a full denial: the record is the evidence of what the visitor chose. Decisions are append-only — a later decision never overwrites an earlier one.
+         */
+        post: operations["recordVisitorConsent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/visitor/identify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stitch a visitor to a captured Lead
+         * @description Unauthenticated and rate limited per client IP. Accepts a Lead id only: that id is opaque and known solely to whoever just submitted the lead. Attaching a Member requires a session and uses /v1/visitor/identify-member instead, so an unauthenticated caller cannot attach a visitor to someone else's Member. Identification is first-write-wins per identity kind.
+         */
+        post: operations["identifyVisitorAsLead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/visitor/identify-member": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stitch a visitor to the authenticated Member
+         * @description Requires a Member session. The Member id is taken from the resolved session and can never be supplied in the body — the request schema has no such field.
+         */
+        post: operations["identifyVisitorAsMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/visitor-journeys/correlation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the visitor acquisition/identification breakdown
+         * @description Operator-only. Requires a Member session holding analytics:read whose Organization is the configured platform operator Organization. Any other Member — including a customer admin who legitimately holds analytics:read inside their own Organization — receives a non-disclosing 404, because visitor journeys describe Rollfuse' own visitors and are not tenant data.
+         */
+        get: operations["readVisitorCorrelation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/visitor-journeys/{visitor_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Erase everything recorded under a visitor id
+         * @description Operator-only, same authorization as the correlation read. Deletes every visitor session, journey event and identity link under the visitor id. Consent records are deliberately kept: they are the evidence of the visitor's choices, including this one.
+         */
+        delete: operations["eraseVisitorJourney"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leads": {
         parameters: {
             query?: never;
@@ -2066,6 +2186,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{organization_id}/billing/subscription/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a new checkout for an organization with no blocking subscription
+         * @description Requires a session for a Member holding billing:manage. Starts an independent, brand-new Subscription for the organization — never a reactivation of a prior canceled one. Reachable only while the organization has no Subscription in `trialing`, `active`, `past_due`, or `suspended` state: an organization with no Subscription at all, or whose most recent one is `canceled`, is eligible. Always requires a freshly collected `payment_method_id` (see POST .../billing/setup-intent) — a canceled Subscription's own payment method and gateway subscription are never reused.
+         */
+        post: operations["checkoutOrganizationSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/billing/plans": {
         parameters: {
             query?: never;
@@ -2135,16 +2275,99 @@ export interface components {
             /** @description The pagination offset actually applied. */
             offset: number;
         };
+        VisitorConsentState: {
+            analytics: boolean;
+            marketing: boolean;
+        };
+        VisitorAcquisition: {
+            utm_source?: string;
+            utm_medium?: string;
+            utm_campaign?: string;
+            utm_term?: string;
+            utm_content?: string;
+            landing_url?: string;
+            referrer?: string;
+        };
+        VisitorJourneyEvent: {
+            /**
+             * @description A closed set. An event named anything else is rejected, so the value can never become unbounded and visitor-controlled.
+             * @enum {string}
+             */
+            name: "pageview" | "signup_started" | "signup_completed" | "lead_submitted" | "login_completed" | "checkout_started" | "checkout_completed";
+            /** @description A pathname only, already normalized to its route template by the client. A value carrying a query string or fragment is rejected rather than truncated. */
+            route: string;
+            /** @description At most 10 entries, keys drawn from a closed allowlist. Values containing an "@" are rejected, so this cannot become a channel for personal data. */
+            properties?: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            occurred_at: string;
+        };
+        RecordVisitorEventsRequest: {
+            /** @description A pseudonymous, browser-generated opaque token. Never derived from an IP address, user agent, email or anything else that would identify the visitor across sites. */
+            visitor_id: string;
+            session_id: string;
+            /** @enum {string} */
+            locale: "en" | "pt-br";
+            consent: components["schemas"]["VisitorConsentState"];
+            acquisition?: components["schemas"]["VisitorAcquisition"];
+            events: components["schemas"]["VisitorJourneyEvent"][];
+        };
+        RecordVisitorConsentRequest: {
+            visitor_id: string;
+            analytics: boolean;
+            marketing: boolean;
+            /** @description The cookie-policy version the decision was made against. */
+            policy_version: string;
+            /** Format: date-time */
+            decided_at: string;
+        };
+        IdentifyVisitorRequest: {
+            visitor_id: string;
+            lead_id: string;
+        };
+        IdentifyVisitorAsMemberRequest: {
+            visitor_id: string;
+        };
+        VisitorIngestAccepted: {
+            /** @description Whether the submission was queued. It is false both when the queue is saturated and when the submission was discarded for lack of consent — deliberately, so the caller learns nothing about stored state. */
+            accepted: boolean;
+        };
+        VisitorCorrelationBucket: {
+            utm_source: string;
+            utm_medium: string;
+            utm_campaign: string;
+            /** @enum {string} */
+            state: "unidentified" | "lead" | "member";
+            /** @description Distinct visitors in this bucket, counted once each. */
+            visitors: number;
+        };
+        VisitorCorrelation: {
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            buckets: components["schemas"]["VisitorCorrelationBucket"][];
+        };
         CreateLeadRequest: {
             /** Format: email */
             email: string;
             tier?: string;
             company_name?: string;
+            utm_source?: string;
+            utm_medium?: string;
+            utm_campaign?: string;
+            utm_term?: string;
+            utm_content?: string;
+            landing_url?: string;
+            referrer?: string;
             /**
              * @description The marketing-site locale the lead was submitted from, inferred by the client from the page's route.
              * @enum {string}
              */
             locale: "en" | "pt-br";
+            /** @description The submitting browser's pseudonymous visitor id, sent only when the visitor granted analytics consent. Optional: a submission without it is equally valid, and stitching the Lead to that visitor's journey never affects whether the Lead is persisted. */
+            visitor_session_id?: string;
         };
         Lead: {
             id: string;
@@ -2152,6 +2375,13 @@ export interface components {
             email: string;
             tier?: string;
             company_name?: string;
+            utm_source?: string;
+            utm_medium?: string;
+            utm_campaign?: string;
+            utm_term?: string;
+            utm_content?: string;
+            landing_url?: string;
+            referrer?: string;
             /** @enum {string} */
             locale: "en" | "pt-br";
             /** Format: date-time */
@@ -3300,6 +3530,10 @@ export interface components {
             scheduled_plan_change?: components["schemas"]["ScheduledPlanChange"];
             /** Format: date-time */
             cycle_end_at: string;
+            /** @description True when this Subscription has never been billed at the gateway yet (still on the platform's $0 default plan) — changing to a paid plan requires a payment method verified via the setup-intent endpoint first. */
+            requires_payment_method_to_activate?: boolean;
+            /** @description True when this Subscription is `canceled` — the organization has no blocking subscription and may start an independent new checkout (POST .../billing/subscription/checkout) for any published paid plan, always with a newly collected payment method rather than reusing this Subscription's own (now-ended) one. */
+            can_start_new_checkout?: boolean;
         };
         OrganizationSubscription: {
             organization_id: string;
@@ -3321,6 +3555,13 @@ export interface components {
             plan_version_id: string;
             /** @description Must name a price attached to plan_version_id. Required separately because a plan version may carry several prices. */
             price_id: string;
+        };
+        CheckoutRequest: {
+            plan_version_id: string;
+            /** @description Must name a price attached to plan_version_id. Required separately because a plan version may carry several prices. */
+            price_id: string;
+            /** @description A payment method verified through a setup intent (see POST .../billing/setup-intent). Always required: checkout always collects a new payment method, even for an organization whose prior Subscription is canceled — it never reuses one. */
+            payment_method_id: string;
         };
     };
     responses: never;
@@ -3531,6 +3772,342 @@ export interface operations {
                      *       }
                      *     }
                      */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    recordVisitorJourneyEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "visitor_id": "018f2f3a6f4f7b3e9c3a1f2b3c4d5e6f",
+                 *       "session_id": "018f2f3a6f4f7b3e9c3a1f2b3c4d5e70",
+                 *       "locale": "en",
+                 *       "consent": {
+                 *         "analytics": true,
+                 *         "marketing": false
+                 *       },
+                 *       "acquisition": {
+                 *         "utm_source": "google",
+                 *         "utm_medium": "cpc",
+                 *         "utm_campaign": "launch"
+                 *       },
+                 *       "events": [
+                 *         {
+                 *           "name": "pageview",
+                 *           "route": "/pricing",
+                 *           "occurred_at": "2026-01-01T12:00:00Z"
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["RecordVisitorEventsRequest"];
+            };
+        };
+        responses: {
+            /** @description Submission accepted for background processing, or discarded for lack of consent. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "accepted": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VisitorIngestAccepted"];
+                };
+            };
+            /** @description Validation error or malformed JSON body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    recordVisitorConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "visitor_id": "018f2f3a6f4f7b3e9c3a1f2b3c4d5e6f",
+                 *       "analytics": true,
+                 *       "marketing": false,
+                 *       "policy_version": "2026-09-04",
+                 *       "decided_at": "2026-01-01T12:00:00Z"
+                 *     }
+                 */
+                "application/json": components["schemas"]["RecordVisitorConsentRequest"];
+            };
+        };
+        responses: {
+            /** @description Decision accepted for background processing. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "accepted": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VisitorIngestAccepted"];
+                };
+            };
+            /** @description Validation error or malformed JSON body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    identifyVisitorAsLead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "visitor_id": "018f2f3a6f4f7b3e9c3a1f2b3c4d5e6f",
+                 *       "lead_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                 *     }
+                 */
+                "application/json": components["schemas"]["IdentifyVisitorRequest"];
+            };
+        };
+        responses: {
+            /** @description Identification accepted for background processing. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "accepted": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VisitorIngestAccepted"];
+                };
+            };
+            /** @description Validation error or malformed JSON body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limit exceeded. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    identifyVisitorAsMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "visitor_id": "018f2f3a6f4f7b3e9c3a1f2b3c4d5e6f"
+                 *     }
+                 */
+                "application/json": components["schemas"]["IdentifyVisitorAsMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Identification accepted for background processing. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "accepted": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VisitorIngestAccepted"];
+                };
+            };
+            /** @description Validation error or malformed JSON body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    readVisitorCorrelation: {
+        parameters: {
+            query?: {
+                /** @description Start of the window (inclusive). Defaults to 30 days ago. */
+                from?: string;
+                /** @description End of the window (exclusive). Defaults to now. */
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Distinct visitor counts per acquisition channel and identification state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "from": "2026-01-01T00:00:00Z",
+                     *       "to": "2026-01-31T00:00:00Z",
+                     *       "buckets": [
+                     *         {
+                     *           "utm_source": "google",
+                     *           "utm_medium": "cpc",
+                     *           "utm_campaign": "launch",
+                     *           "state": "member",
+                     *           "visitors": 42
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["VisitorCorrelation"];
+                };
+            };
+            /** @description Invalid window. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Non-disclosing not-found for a caller outside the operator Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    eraseVisitorJourney: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                visitor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Visitor journey erased. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Non-disclosing not-found for a caller outside the operator Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -12536,6 +13113,132 @@ export interface operations {
                      *       "error": {
                      *         "code": "price_not_assigned",
                      *         "message": "This organization may only subscribe to its assigned price for this plan.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    checkoutOrganizationSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "plan_version_id": "018f2f3a-8100-7000-9c3a-1f2b3c4d5e6f",
+                 *       "price_id": "018f2f3a-8200-7000-9c3a-1f2b3c4d5e6f",
+                 *       "payment_method_id": "pm_1NxSampleCardId"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CheckoutRequest"];
+            };
+        };
+        responses: {
+            /** @description The newly created subscription. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "organization_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f",
+                     *       "subscription": {
+                     *         "id": "018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "status": "active",
+                     *         "plan": {
+                     *           "key": "starter",
+                     *           "display_name": "Starter",
+                     *           "description": "For small teams",
+                     *           "plan_version_id": "018f2f3a-8100-7000-9c3a-1f2b3c4d5e6f",
+                     *           "version": 1
+                     *         },
+                     *         "grants": [
+                     *           {
+                     *             "resource_key": "project",
+                     *             "policy_kind": "finite",
+                     *             "policy_limit": 3
+                     *           }
+                     *         ],
+                     *         "price": {
+                     *           "id": "018f2f3a-8200-7000-9c3a-1f2b3c4d5e6f",
+                     *           "amount": 1900,
+                     *           "currency": "BRL",
+                     *           "interval": "month"
+                     *         },
+                     *         "cycle_end_at": "2026-02-01T12:00:00Z"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["OrganizationSubscription"];
+                };
+            };
+            /** @description Validation error or malformed JSON body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "billing_validation_error",
+                     *         "message": "payment_method_id is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold billing:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The requested Organization is not the caller's own, or the target plan version/price was not found. Deliberately indistinguishable from an unknown Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization already has a Subscription in a blocking state (`billing_subscription_conflict`), or the selected `price_id` is not the one this organization's pricing-experiment assignment offers for the target plan (`price_not_assigned`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "billing_subscription_conflict",
+                     *         "message": "This organization already has an active subscription.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }

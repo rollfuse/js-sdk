@@ -145,6 +145,271 @@
       }
     }
   },
+  "VisitorConsentState": {
+    "type": "object",
+    "required": [
+      "analytics",
+      "marketing"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "analytics": {
+        "type": "boolean"
+      },
+      "marketing": {
+        "type": "boolean"
+      }
+    }
+  },
+  "VisitorAcquisition": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "utm_source": {
+        "type": "string",
+        "maxLength": 255
+      },
+      "utm_medium": {
+        "type": "string",
+        "maxLength": 255
+      },
+      "utm_campaign": {
+        "type": "string",
+        "maxLength": 255
+      },
+      "utm_term": {
+        "type": "string",
+        "maxLength": 255
+      },
+      "utm_content": {
+        "type": "string",
+        "maxLength": 255
+      },
+      "landing_url": {
+        "type": "string",
+        "maxLength": 2048
+      },
+      "referrer": {
+        "type": "string",
+        "maxLength": 2048
+      }
+    }
+  },
+  "VisitorJourneyEvent": {
+    "type": "object",
+    "required": [
+      "name",
+      "route",
+      "occurred_at"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": "string",
+        "enum": [
+          "pageview",
+          "signup_started",
+          "signup_completed",
+          "lead_submitted",
+          "login_completed",
+          "checkout_started",
+          "checkout_completed"
+        ],
+        "description": "A closed set. An event named anything else is rejected, so the value can never become unbounded and visitor-controlled."
+      },
+      "route": {
+        "type": "string",
+        "maxLength": 512,
+        "description": "A pathname only, already normalized to its route template by the client. A value carrying a query string or fragment is rejected rather than truncated."
+      },
+      "properties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "description": "At most 10 entries, keys drawn from a closed allowlist. Values containing an \"@\" are rejected, so this cannot become a channel for personal data."
+      },
+      "occurred_at": {
+        "type": "string",
+        "format": "date-time"
+      }
+    }
+  },
+  "RecordVisitorEventsRequest": {
+    "type": "object",
+    "required": [
+      "visitor_id",
+      "session_id",
+      "locale",
+      "consent",
+      "events"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "visitor_id": {
+        "type": "string",
+        "maxLength": 64,
+        "description": "A pseudonymous, browser-generated opaque token. Never derived from an IP address, user agent, email or anything else that would identify the visitor across sites."
+      },
+      "session_id": {
+        "type": "string",
+        "maxLength": 64
+      },
+      "locale": {
+        "type": "string",
+        "enum": [
+          "en",
+          "pt-br"
+        ]
+      },
+      "consent": {
+        "$ref": "#/components/schemas/VisitorConsentState"
+      },
+      "acquisition": {
+        "$ref": "#/components/schemas/VisitorAcquisition"
+      },
+      "events": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/VisitorJourneyEvent"
+        }
+      }
+    }
+  },
+  "RecordVisitorConsentRequest": {
+    "type": "object",
+    "required": [
+      "visitor_id",
+      "analytics",
+      "marketing",
+      "policy_version",
+      "decided_at"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "visitor_id": {
+        "type": "string",
+        "maxLength": 64
+      },
+      "analytics": {
+        "type": "boolean"
+      },
+      "marketing": {
+        "type": "boolean"
+      },
+      "policy_version": {
+        "type": "string",
+        "maxLength": 40,
+        "description": "The cookie-policy version the decision was made against."
+      },
+      "decided_at": {
+        "type": "string",
+        "format": "date-time"
+      }
+    }
+  },
+  "IdentifyVisitorRequest": {
+    "type": "object",
+    "required": [
+      "visitor_id",
+      "lead_id"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "visitor_id": {
+        "type": "string",
+        "maxLength": 64
+      },
+      "lead_id": {
+        "type": "string",
+        "maxLength": 64
+      }
+    }
+  },
+  "IdentifyVisitorAsMemberRequest": {
+    "type": "object",
+    "required": [
+      "visitor_id"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "visitor_id": {
+        "type": "string",
+        "maxLength": 64
+      }
+    }
+  },
+  "VisitorIngestAccepted": {
+    "type": "object",
+    "required": [
+      "accepted"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "accepted": {
+        "type": "boolean",
+        "description": "Whether the submission was queued. It is false both when the queue is saturated and when the submission was discarded for lack of consent — deliberately, so the caller learns nothing about stored state."
+      }
+    }
+  },
+  "VisitorCorrelationBucket": {
+    "type": "object",
+    "required": [
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "state",
+      "visitors"
+    ],
+    "properties": {
+      "utm_source": {
+        "type": "string"
+      },
+      "utm_medium": {
+        "type": "string"
+      },
+      "utm_campaign": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string",
+        "enum": [
+          "unidentified",
+          "lead",
+          "member"
+        ]
+      },
+      "visitors": {
+        "type": "integer",
+        "description": "Distinct visitors in this bucket, counted once each."
+      }
+    }
+  },
+  "VisitorCorrelation": {
+    "type": "object",
+    "required": [
+      "from",
+      "to",
+      "buckets"
+    ],
+    "properties": {
+      "from": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "to": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "buckets": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/VisitorCorrelationBucket"
+        }
+      }
+    }
+  },
   "CreateLeadRequest": {
     "type": "object",
     "required": [
@@ -167,6 +432,27 @@
         "type": "string",
         "maxLength": 200
       },
+      "utm_source": {
+        "type": "string"
+      },
+      "utm_medium": {
+        "type": "string"
+      },
+      "utm_campaign": {
+        "type": "string"
+      },
+      "utm_term": {
+        "type": "string"
+      },
+      "utm_content": {
+        "type": "string"
+      },
+      "landing_url": {
+        "type": "string"
+      },
+      "referrer": {
+        "type": "string"
+      },
       "locale": {
         "type": "string",
         "enum": [
@@ -174,6 +460,11 @@
           "pt-br"
         ],
         "description": "The marketing-site locale the lead was submitted from, inferred by the client from the page's route."
+      },
+      "visitor_session_id": {
+        "type": "string",
+        "maxLength": 64,
+        "description": "The submitting browser's pseudonymous visitor id, sent only when the visitor granted analytics consent. Optional: a submission without it is equally valid, and stitching the Lead to that visitor's journey never affects whether the Lead is persisted."
       }
     }
   },
@@ -197,6 +488,27 @@
         "type": "string"
       },
       "company_name": {
+        "type": "string"
+      },
+      "utm_source": {
+        "type": "string"
+      },
+      "utm_medium": {
+        "type": "string"
+      },
+      "utm_campaign": {
+        "type": "string"
+      },
+      "utm_term": {
+        "type": "string"
+      },
+      "utm_content": {
+        "type": "string"
+      },
+      "landing_url": {
+        "type": "string"
+      },
+      "referrer": {
         "type": "string"
       },
       "locale": {
@@ -4129,6 +4441,14 @@
       "cycle_end_at": {
         "type": "string",
         "format": "date-time"
+      },
+      "requires_payment_method_to_activate": {
+        "type": "boolean",
+        "description": "True when this Subscription has never been billed at the gateway yet (still on the platform's $0 default plan) — changing to a paid plan requires a payment method verified via the setup-intent endpoint first."
+      },
+      "can_start_new_checkout": {
+        "type": "boolean",
+        "description": "True when this Subscription is `canceled` — the organization has no blocking subscription and may start an independent new checkout (POST .../billing/subscription/checkout) for any published paid plan, always with a newly collected payment method rather than reusing this Subscription's own (now-ended) one."
       }
     }
   },
@@ -4209,6 +4529,27 @@
       "price_id": {
         "type": "string",
         "description": "Must name a price attached to plan_version_id. Required separately because a plan version may carry several prices."
+      }
+    }
+  },
+  "CheckoutRequest": {
+    "type": "object",
+    "required": [
+      "plan_version_id",
+      "price_id",
+      "payment_method_id"
+    ],
+    "properties": {
+      "plan_version_id": {
+        "type": "string"
+      },
+      "price_id": {
+        "type": "string",
+        "description": "Must name a price attached to plan_version_id. Required separately because a plan version may carry several prices."
+      },
+      "payment_method_id": {
+        "type": "string",
+        "description": "A payment method verified through a setup intent (see POST .../billing/setup-intent). Always required: checkout always collects a new payment method, even for an organization whose prior Subscription is canceled — it never reuses one."
       }
     }
   }
