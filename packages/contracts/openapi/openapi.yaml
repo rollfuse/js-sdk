@@ -181,6 +181,288 @@ paths:
                   message: Organization was not found.
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
 
+  /v1/visitor/events:
+    post:
+      operationId: recordVisitorJourneyEvents
+      summary: Record a batch of visitor-journey events
+      description: >-
+        Unauthenticated — a visitor of the marketing site has no session.
+        Rate limited per client IP. A batch whose consent block does not
+        grant analytics is discarded and answered with the same 202 a
+        stored batch receives, so a caller cannot tell stored state from
+        discarded state. Consent is checked again against the stored
+        consent record before anything is persisted.
+      tags: [visitor-journeys]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordVisitorEventsRequest"
+            example:
+              visitor_id: 018f2f3a6f4f7b3e9c3a1f2b3c4d5e6f
+              session_id: 018f2f3a6f4f7b3e9c3a1f2b3c4d5e70
+              locale: en
+              consent:
+                analytics: true
+                marketing: false
+              acquisition:
+                utm_source: google
+                utm_medium: cpc
+                utm_campaign: launch
+              events:
+                - name: pageview
+                  route: /pricing
+                  occurred_at: "2026-01-01T12:00:00Z"
+      responses:
+        "202":
+          description: Submission accepted for background processing, or discarded for lack of consent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitorIngestAccepted"
+              example:
+                accepted: true
+        "400":
+          description: Validation error or malformed JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/visitor/consent:
+    post:
+      operationId: recordVisitorConsent
+      summary: Record a visitor's cookie-consent decision
+      description: >-
+        Unauthenticated and rate limited per client IP. Every decision is
+        accepted, including a full denial: the record is the evidence of
+        what the visitor chose. Decisions are append-only — a later
+        decision never overwrites an earlier one.
+      tags: [visitor-journeys]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordVisitorConsentRequest"
+            example:
+              visitor_id: 018f2f3a6f4f7b3e9c3a1f2b3c4d5e6f
+              analytics: true
+              marketing: false
+              policy_version: "2026-09-04"
+              decided_at: "2026-01-01T12:00:00Z"
+      responses:
+        "202":
+          description: Decision accepted for background processing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitorIngestAccepted"
+              example:
+                accepted: true
+        "400":
+          description: Validation error or malformed JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/visitor/identify:
+    post:
+      operationId: identifyVisitorAsLead
+      summary: Stitch a visitor to a captured Lead
+      description: >-
+        Unauthenticated and rate limited per client IP. Accepts a Lead id
+        only: that id is opaque and known solely to whoever just submitted
+        the lead. Attaching a Member requires a session and uses
+        /v1/visitor/identify-member instead, so an unauthenticated caller
+        cannot attach a visitor to someone else's Member. Identification is
+        first-write-wins per identity kind.
+      tags: [visitor-journeys]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentifyVisitorRequest"
+            example:
+              visitor_id: 018f2f3a6f4f7b3e9c3a1f2b3c4d5e6f
+              lead_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+      responses:
+        "202":
+          description: Identification accepted for background processing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitorIngestAccepted"
+              example:
+                accepted: true
+        "400":
+          description: Validation error or malformed JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/visitor/identify-member:
+    post:
+      operationId: identifyVisitorAsMember
+      summary: Stitch a visitor to the authenticated Member
+      description: >-
+        Requires a Member session. The Member id is taken from the resolved
+        session and can never be supplied in the body — the request schema
+        has no such field.
+      tags: [visitor-journeys]
+      security:
+        - sessionToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentifyVisitorAsMemberRequest"
+            example:
+              visitor_id: 018f2f3a6f4f7b3e9c3a1f2b3c4d5e6f
+      responses:
+        "202":
+          description: Identification accepted for background processing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitorIngestAccepted"
+              example:
+                accepted: true
+        "400":
+          description: Validation error or malformed JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/visitor-journeys/correlation:
+    get:
+      operationId: readVisitorCorrelation
+      summary: Read the visitor acquisition/identification breakdown
+      description: >-
+        Operator-only. Requires a Member session holding analytics:read
+        whose Organization is the configured platform operator
+        Organization. Any other Member — including a customer admin who
+        legitimately holds analytics:read inside their own Organization —
+        receives a non-disclosing 404, because visitor journeys describe
+        Rollfuse' own visitors and are not tenant data.
+      tags: [visitor-journeys]
+      security:
+        - sessionToken: []
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Start of the window (inclusive). Defaults to 30 days ago.
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: End of the window (exclusive). Defaults to now.
+      responses:
+        "200":
+          description: Distinct visitor counts per acquisition channel and identification state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitorCorrelation"
+              example:
+                from: "2026-01-01T00:00:00Z"
+                to: "2026-01-31T00:00:00Z"
+                buckets:
+                  - utm_source: google
+                    utm_medium: cpc
+                    utm_campaign: launch
+                    state: member
+                    visitors: 42
+        "400":
+          description: Invalid window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Non-disclosing not-found for a caller outside the operator Organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/visitor-journeys/{visitor_id}:
+    delete:
+      operationId: eraseVisitorJourney
+      summary: Erase everything recorded under a visitor id
+      description: >-
+        Operator-only, same authorization as the correlation read. Deletes
+        every visitor session, journey event and identity link under the
+        visitor id. Consent records are deliberately kept: they are the
+        evidence of the visitor's choices, including this one.
+      tags: [visitor-journeys]
+      security:
+        - sessionToken: []
+      parameters:
+        - name: visitor_id
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+      responses:
+        "204":
+          description: Visitor journey erased.
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Non-disclosing not-found for a caller outside the operator Organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/leads:
     post:
       operationId: createLead
@@ -8417,6 +8699,116 @@ paths:
                   message: This organization may only subscribe to its assigned price for this plan.
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
 
+  /v1/organizations/{organization_id}/billing/subscription/checkout:
+    post:
+      operationId: checkoutOrganizationSubscription
+      summary: Start a new checkout for an organization with no blocking subscription
+      description: >-
+        Requires a session for a Member holding billing:manage. Starts an
+        independent, brand-new Subscription for the organization — never a
+        reactivation of a prior canceled one. Reachable only while the
+        organization has no Subscription in `trialing`, `active`,
+        `past_due`, or `suspended` state: an organization with no
+        Subscription at all, or whose most recent one is `canceled`, is
+        eligible. Always requires a freshly collected `payment_method_id`
+        (see POST .../billing/setup-intent) — a canceled Subscription's own
+        payment method and gateway subscription are never reused.
+      tags: [billing]
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutRequest"
+            example:
+              plan_version_id: 018f2f3a-8100-7000-9c3a-1f2b3c4d5e6f
+              price_id: 018f2f3a-8200-7000-9c3a-1f2b3c4d5e6f
+              payment_method_id: pm_1NxSampleCardId
+      responses:
+        "201":
+          description: The newly created subscription.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationSubscription"
+              example:
+                organization_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+                subscription:
+                  id: 018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f
+                  status: active
+                  plan:
+                    key: starter
+                    display_name: Starter
+                    description: For small teams
+                    plan_version_id: 018f2f3a-8100-7000-9c3a-1f2b3c4d5e6f
+                    version: 1
+                  grants:
+                    - resource_key: project
+                      policy_kind: finite
+                      policy_limit: 3
+                  price:
+                    id: 018f2f3a-8200-7000-9c3a-1f2b3c4d5e6f
+                    amount: 1900
+                    currency: BRL
+                    interval: month
+                  cycle_end_at: "2026-02-01T12:00:00Z"
+        "400":
+          description: Validation error or malformed JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: billing_validation_error
+                  message: payment_method_id is required.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The session's Member does not hold billing:manage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: >-
+            The requested Organization is not the caller's own, or the
+            target plan version/price was not found. Deliberately
+            indistinguishable from an unknown Organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: >-
+            The organization already has a Subscription in a blocking
+            state (`billing_subscription_conflict`), or the selected
+            `price_id` is not the one this organization's
+            pricing-experiment assignment offers for the target plan
+            (`price_not_assigned`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: billing_subscription_conflict
+                  message: This organization already has an active subscription.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+
   /v1/billing/plans:
     get:
       operationId: listBillingPlans
@@ -8588,6 +8980,193 @@ components:
           type: integer
           description: The pagination offset actually applied.
 
+    VisitorConsentState:
+      type: object
+      required: [analytics, marketing]
+      additionalProperties: false
+      properties:
+        analytics:
+          type: boolean
+        marketing:
+          type: boolean
+
+    VisitorAcquisition:
+      type: object
+      additionalProperties: false
+      properties:
+        utm_source:
+          type: string
+          maxLength: 255
+        utm_medium:
+          type: string
+          maxLength: 255
+        utm_campaign:
+          type: string
+          maxLength: 255
+        utm_term:
+          type: string
+          maxLength: 255
+        utm_content:
+          type: string
+          maxLength: 255
+        landing_url:
+          type: string
+          maxLength: 2048
+        referrer:
+          type: string
+          maxLength: 2048
+
+    VisitorJourneyEvent:
+      type: object
+      required: [name, route, occurred_at]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          enum:
+            - pageview
+            - signup_started
+            - signup_completed
+            - lead_submitted
+            - login_completed
+            - checkout_started
+            - checkout_completed
+          description: >-
+            A closed set. An event named anything else is rejected, so the
+            value can never become unbounded and visitor-controlled.
+        route:
+          type: string
+          maxLength: 512
+          description: >-
+            A pathname only, already normalized to its route template by
+            the client. A value carrying a query string or fragment is
+            rejected rather than truncated.
+        properties:
+          type: object
+          additionalProperties:
+            type: string
+            maxLength: 120
+          description: >-
+            At most 10 entries, keys drawn from a closed allowlist. Values
+            containing an "@" are rejected, so this cannot become a channel
+            for personal data.
+        occurred_at:
+          type: string
+          format: date-time
+
+    RecordVisitorEventsRequest:
+      type: object
+      required: [visitor_id, session_id, locale, consent, events]
+      additionalProperties: false
+      properties:
+        visitor_id:
+          type: string
+          maxLength: 64
+          description: >-
+            A pseudonymous, browser-generated opaque token. Never derived
+            from an IP address, user agent, email or anything else that
+            would identify the visitor across sites.
+        session_id:
+          type: string
+          maxLength: 64
+        locale:
+          type: string
+          enum: [en, pt-br]
+        consent:
+          $ref: "#/components/schemas/VisitorConsentState"
+        acquisition:
+          $ref: "#/components/schemas/VisitorAcquisition"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/VisitorJourneyEvent"
+
+    RecordVisitorConsentRequest:
+      type: object
+      required: [visitor_id, analytics, marketing, policy_version, decided_at]
+      additionalProperties: false
+      properties:
+        visitor_id:
+          type: string
+          maxLength: 64
+        analytics:
+          type: boolean
+        marketing:
+          type: boolean
+        policy_version:
+          type: string
+          maxLength: 40
+          description: The cookie-policy version the decision was made against.
+        decided_at:
+          type: string
+          format: date-time
+
+    IdentifyVisitorRequest:
+      type: object
+      required: [visitor_id, lead_id]
+      additionalProperties: false
+      properties:
+        visitor_id:
+          type: string
+          maxLength: 64
+        lead_id:
+          type: string
+          maxLength: 64
+
+    IdentifyVisitorAsMemberRequest:
+      type: object
+      required: [visitor_id]
+      additionalProperties: false
+      properties:
+        visitor_id:
+          type: string
+          maxLength: 64
+
+    VisitorIngestAccepted:
+      type: object
+      required: [accepted]
+      additionalProperties: false
+      properties:
+        accepted:
+          type: boolean
+          description: >-
+            Whether the submission was queued. It is false both when the
+            queue is saturated and when the submission was discarded for
+            lack of consent — deliberately, so the caller learns nothing
+            about stored state.
+
+    VisitorCorrelationBucket:
+      type: object
+      required: [utm_source, utm_medium, utm_campaign, state, visitors]
+      properties:
+        utm_source:
+          type: string
+        utm_medium:
+          type: string
+        utm_campaign:
+          type: string
+        state:
+          type: string
+          enum: [unidentified, lead, member]
+        visitors:
+          type: integer
+          description: Distinct visitors in this bucket, counted once each.
+
+    VisitorCorrelation:
+      type: object
+      required: [from, to, buckets]
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        buckets:
+          type: array
+          items:
+            $ref: "#/components/schemas/VisitorCorrelationBucket"
+
     CreateLeadRequest:
       type: object
       required: [email, locale]
@@ -8624,6 +9203,14 @@ components:
           description: >-
             The marketing-site locale the lead was submitted from, inferred
             by the client from the page's route.
+        visitor_session_id:
+          type: string
+          maxLength: 64
+          description: >-
+            The submitting browser's pseudonymous visitor id, sent only when
+            the visitor granted analytics consent. Optional: a submission
+            without it is equally valid, and stitching the Lead to that
+            visitor's journey never affects whether the Lead is persisted.
 
     Lead:
       type: object
@@ -11395,6 +11982,22 @@ components:
         cycle_end_at:
           type: string
           format: date-time
+        requires_payment_method_to_activate:
+          type: boolean
+          description: >-
+            True when this Subscription has never been billed at the
+            gateway yet (still on the platform's $0 default plan) —
+            changing to a paid plan requires a payment method verified via
+            the setup-intent endpoint first.
+        can_start_new_checkout:
+          type: boolean
+          description: >-
+            True when this Subscription is `canceled` — the organization
+            has no blocking subscription and may start an independent new
+            checkout (POST .../billing/subscription/checkout) for any
+            published paid plan, always with a newly collected payment
+            method rather than reusing this Subscription's own (now-ended)
+            one.
 
     OrganizationSubscription:
       type: object
@@ -11455,6 +12058,25 @@ components:
             Must name a price attached to plan_version_id. Required
             separately because a plan version may carry several prices.
 
+    CheckoutRequest:
+      type: object
+      required: [plan_version_id, price_id, payment_method_id]
+      properties:
+        plan_version_id:
+          type: string
+        price_id:
+          type: string
+          description: >-
+            Must name a price attached to plan_version_id. Required
+            separately because a plan version may carry several prices.
+        payment_method_id:
+          type: string
+          description: >-
+            A payment method verified through a setup intent (see POST
+            .../billing/setup-intent). Always required: checkout always
+            collects a new payment method, even for an organization whose
+            prior Subscription is canceled — it never reuses one.
+
   securitySchemes:
     bearerAuth:
       type: http
@@ -11505,6 +12127,14 @@ tags:
       exposed here — it stays seed/migration-driven.
   - name: health
     description: Process liveness and readiness signals.
+  - name: visitor-journeys
+    description: >-
+      First-party visitor-journey capture for Rollfuse' own marketing site
+      and console: consent decisions, journey events, and the stitching of
+      an anonymous visitor to a Lead or Member. These records describe our
+      own visitors and are not tenant data, so the read and erasure
+      endpoints are restricted to the platform operator Organization rather
+      than to any Member holding analytics:read.
   - name: organizations
     description: >-
       Development-foundation Organization endpoints. Unauthenticated until
