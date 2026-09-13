@@ -75,6 +75,21 @@ npm install @rollfuse/sdk-react
 ```
 
 ```tsx
+// Server Component
+import { RollfuseProvider } from "@rollfuse/sdk-react";
+
+const evaluations = client.evaluateAll(subjectKey);
+
+function Page() {
+  return (
+    <RollfuseProvider evaluations={evaluations}>
+      <CheckoutButton />
+    </RollfuseProvider>
+  );
+}
+```
+
+```tsx
 "use client";
 import { useFlag } from "@rollfuse/sdk-react";
 
@@ -83,6 +98,12 @@ function CheckoutButton() {
   return value ? <NewCheckoutButton /> : <LegacyCheckoutButton />;
 }
 ```
+
+`useFlag`/`useFlags` throw `MissingProviderError` if called outside a
+mounted `RollfuseProvider` — see
+[`packages/sdk-react`](packages/sdk-react/)'s own README for the full
+setup (including a client-driven mode that needs no server render step
+at all) and exposure reporting.
 
 Each package's own README covers configuration options, credential
 scoping, and the full integration pattern (server-evaluated bootstrap,
