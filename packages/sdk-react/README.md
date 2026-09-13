@@ -1,28 +1,39 @@
 # @rollfuse/sdk-react
 
 React/Next.js consumption layer for [rollfuse](https://rollfuse.com)
-feature flags: a Provider fed by **server-evaluated** results, plus
-`useFlag`/`useFlags` hooks. It never imports `@rollfuse/sdk-js` and never
-accepts a Service Credential — that boundary is structural, not just
-documented, so this package can be safely bundled into browser code.
-Hydration-stable by design: the variation your server rendered is the same
-variation your client reads, no flicker.
+feature flags: a `RollfuseProvider` plus `useFlag`/`useFlags` hooks, fed by
+either of two sources. It never imports `@rollfuse/sdk-js` and never
+accepts a Service Credential in either mode — that boundary is structural,
+not just documented, so this package can be safely bundled into browser
+code.
 
-Part of the [rollfuse JS/TS SDK family](https://github.com/rollfuse/js-sdk)
-— see that repo's README if you're not sure which package you want.
+Part of the [rollfuse JS/TS SDK family](https://github.com/rollfuse/js-sdk).
+See that repo's README if you're not sure which package you want.
 
 See `openspec/specs/sdk-react/spec.md` for its full behavioral contract.
 
-## Why this package never talks to the platform directly
+## Two ways to feed the Provider
 
-`@rollfuse/sdk-js`'s `RollfuseClient` requires a Service Credential — a
-secret, Environment-scoped bearer token meant for server processes only (see
-`openspec/specs/service-credentials/spec.md`). Shipping it to a browser
-bundle would violate that credential's own model. Until the platform has a
-browser-safe public credential (tracked separately), this package's Provider
-is fed evaluation results your Next.js **server** already computed, and its
-exposure-reporting helper posts to an endpoint **you** control server-side,
-never to the platform API directly.
+`@rollfuse/sdk-js`'s `RollfuseClient` requires a Service Credential, a
+secret, Environment-scoped bearer token meant for server processes only
+(see `openspec/specs/service-credentials/spec.md`). Shipping it to a
+browser bundle would violate that credential's own model, so `sdk-react`
+never touches it. Instead, `RollfuseProvider` accepts one of two prop
+shapes:
+
+- **Server-evaluated props** (`evaluations`, the original mode):
+  hydration-stable by design; the variation your Next.js **server**
+  already computed is the exact same variation your client reads, no
+  flicker. This is what the rest of this README's Quick Start walks
+  through.
+- **Client-driven** (`client`): pass a `RollfusePublicClient` from
+  `@rollfuse/sdk-browser`, constructed with a Public Credential (the
+  browser-safe credential mode — a Public Credential can only read
+  Configuration, never write, so leaking it to a browser's network tab
+  never exposes a Service Credential's write access or other
+  environments' data). The Provider subscribes to that client and
+  re-evaluates every flag as its cached Configuration refreshes, with no
+  server render step required at all. See "Client-driven mode" below.
 
 ## Install
 
@@ -98,11 +109,54 @@ function CheckoutButton() {
   `RollfuseProvider` — a missing Provider fails loudly rather than silently
   returning empty results.
 
+## Client-driven mode
+
+No server render step is required at all: construct a
+`RollfusePublicClient` (from `@rollfuse/sdk-browser`, using a Public
+Credential, never a Service Credential) directly in the browser, and pass
+it to `RollfuseProvider` as `client` instead of `evaluations`:
+
+```tsx
+"use client";
+import { RollfuseProvider, useFlag } from "@rollfuse/sdk-react";
+import { RollfusePublicClient } from "@rollfuse/sdk-browser";
+
+const client = new RollfusePublicClient({
+  baseUrl: "https://api.rollfuse.com",
+  publicCredential: window.__ROLLFUSE_PUBLIC_CREDENTIAL__,
+});
+
+await client.start();
+
+function App() {
+  return (
+    <RollfuseProvider client={client} subjectKey="user_123" attributes={{ plan: "pro" }}>
+      <CheckoutButton />
+    </RollfuseProvider>
+  );
+}
+```
+
+`useFlag`/`useFlags` behave identically to server-evaluated mode; the
+Provider re-evaluates automatically whenever the client's cached
+Configuration refreshes, so a component using them re-renders on its own
+when a flag's targeting changes, with no manual refetch.
+
+Exposure reporting needs no wiring in this mode: `RollfusePublicClient`
+queues and submits exposures directly to the platform itself (its Public
+Credential can only read Configuration, so this is safe to do from the
+browser, unlike a Service Credential). The manual relay pattern in
+"Reporting a client-triggered exposure" below is specific to
+server-evaluated mode, where the browser has no client of its own to do
+this automatically.
+
 ### 4. Reporting a client-triggered exposure
 
-If a Client Component re-evaluates using browser-only attributes and needs to
-report the resulting exposure, send it through **your own** server route,
-never straight to the platform:
+If a Client Component re-evaluates using browser-only attributes **while
+in server-evaluated mode** and needs to report the resulting exposure,
+send it through **your own** server route, never straight to the
+platform (client-driven mode does not need this: see "Client-driven mode"
+above):
 
 ```ts
 // app/api/rollfuse/exposure/route.ts
