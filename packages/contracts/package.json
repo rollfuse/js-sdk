@@ -3,6 +3,7 @@
   "version": "0.7.0",
   "description": "TypeScript types generated from openapi/openapi.yaml (a checked-in mirror of the rollfuse platform's OpenAPI document), for consumption by @rollfuse/sdk-js and other TypeScript clients.",
   "type": "module",
+  "sideEffects": false,
   "publishConfig": {
     "access": "public"
   },
@@ -24,12 +25,18 @@
     "lint": "eslint .",
     "test": "vitest run"
   },
-  "dependencies": {
-    "ajv": "8.20.0"
+  "peerDependencies": {
+    "ajv": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ajv": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "26.4.0",
+    "ajv": "8.20.0",
     "eslint": "10.9.1",
     "js-yaml": "5.4.1",
     "openapi-typescript": "7.13.0",

@@ -20,19 +20,46 @@ interface AjvInstance {
 }
 type AjvConstructor = new (options: { strict: boolean }) => AjvInstance;
 
-const Ajv = createRequire(import.meta.url)("ajv") as AjvConstructor;
-
-/**
- * One Ajv instance for the whole package, holding every schema from
- * `schemas.json` under a single root document so `$ref`s between schemas
- * (e.g. `FeatureFlag.variations` referencing `#/components/schemas/
- * Variation`) resolve exactly as they do in the source OpenAPI document —
- * see design.md Decision 2 in `strengthen-contracts-typing`.
- */
-const ajv = new Ajv({ strict: false });
 const ROOT_ID = "openapi-schemas";
 
-ajv.addSchema({ components: { schemas } }, ROOT_ID);
+// restore-sdk-release-pipeline task 3.6: ajv moved from a runtime
+// `dependency` to an optional peer dependency, since no current consumer
+// of this package ever calls validateSchema (every one only does
+// `import type`, which TypeScript erases entirely) — an unconditional
+// `npm install` of, say, @rollfuse/sdk-browser had no reason to pull in
+// ajv's own dependency tree. Requiring it lazily, on first actual call to
+// validateSchema, means merely importing this module (which every
+// consumer's compiled output still does, even for a type-only import in
+// source) never touches ajv at all unless something genuinely calls
+// validateSchema — and a consumer that does call it without having ajv
+// installed gets one clear error naming the missing peer dependency,
+// rather than a crash on import for every consumer regardless of use.
+let ajv: AjvInstance | undefined;
+
+function getAjv(): AjvInstance {
+  if (ajv) return ajv;
+
+  let Ajv: AjvConstructor;
+
+  try {
+    Ajv = createRequire(import.meta.url)("ajv") as AjvConstructor;
+  } catch {
+    throw new Error(
+      'validateSchema: "ajv" is not installed. @rollfuse/contracts declares it as an ' +
+        "optional peer dependency — install ajv (^8.0.0) in your own project to use validateSchema.",
+    );
+  }
+
+  // One Ajv instance for the whole package, holding every schema from
+  // `schemas.json` under a single root document so `$ref`s between schemas
+  // (e.g. `FeatureFlag.variations` referencing `#/components/schemas/
+  // Variation`) resolve exactly as they do in the source OpenAPI document —
+  // see design.md Decision 2 in `strengthen-contracts-typing`.
+  ajv = new Ajv({ strict: false });
+  ajv.addSchema({ components: { schemas } }, ROOT_ID);
+
+  return ajv;
+}
 
 const validators = new Map<string, ValidateFunction>();
 
@@ -40,7 +67,7 @@ function validatorFor(schemaName: string): ValidateFunction {
   const cached = validators.get(schemaName);
   if (cached) return cached;
 
-  const validator = ajv.getSchema(`${ROOT_ID}#/components/schemas/${schemaName}`);
+  const validator = getAjv().getSchema(`${ROOT_ID}#/components/schemas/${schemaName}`);
 
   if (!validator) {
     throw new Error(

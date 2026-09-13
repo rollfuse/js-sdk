@@ -17,9 +17,11 @@
     "changeset:status": "changeset status --verbose",
     "version": "changeset version",
     "release": "npm run build && changeset publish",
-    "release:dry-run": "./scripts/release-dry-run.sh"
+    "release:dry-run": "./scripts/release-dry-run.sh",
+    "check-workspace-ranges": "node scripts/check-workspace-ranges.mjs"
   },
   "devDependencies": {
-    "@changesets/cli": "^3.0.1"
+    "@changesets/cli": "^3.0.1",
+    "semver": "^7.7.3"
   }
 }

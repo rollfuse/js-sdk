@@ -3,6 +3,7 @@
   "version": "0.1.1",
   "description": "Node.js SDK that evaluates Growth Operations Platform feature flags locally against cached, versioned configuration (ADR 0004: Evaluate Flags Locally in SDKs).",
   "type": "module",
+  "sideEffects": false,
   "publishConfig": {
     "access": "public"
   },
@@ -34,7 +35,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@rollfuse/contracts": "^0.2.2",
+    "@rollfuse/contracts": "^0.7.0",
     "@rollfuse/evaluation-core": "^0.2.0",
     "undici": "8.10.0"
   },
