@@ -9,9 +9,9 @@ is briefly unreachable, evaluation keeps working off the last-known-good
 configuration.
 
 This repository is the whole JS/TS family in one place: the shared
-primitives, the server SDK, the browser SDK, and the React bindings — five
-independently published packages that never drift from each other, because
-they're built and tested together.
+primitives, the server SDK, the browser SDK, the React bindings, and an
+OpenFeature provider: six independently published packages that never
+drift from each other, because they're built and tested together.
 
 ## Which package do I want?
 
@@ -131,7 +131,7 @@ and released together:
 ## Development
 
 ```bash
-npm install    # installs all five packages, linked to each other via npm workspaces
+npm install    # installs all six packages, linked to each other via npm workspaces
 npm run build  # builds contracts and evaluation-core first, then the three SDKs
 npm run typecheck
 npm run lint
