@@ -1,6 +1,12 @@
 {
   "name": "@rollfuse/contracts",
   "version": "0.7.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rollfuse/js-sdk.git",
+    "directory": "packages/contracts"
+  },
   "description": "TypeScript types generated from openapi/openapi.yaml (a checked-in mirror of the rollfuse platform's OpenAPI document), for consumption by @rollfuse/sdk-js and other TypeScript clients.",
   "type": "module",
   "sideEffects": false,
