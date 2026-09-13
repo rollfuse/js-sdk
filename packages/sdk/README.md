@@ -35,7 +35,7 @@ import { RollfuseClient } from "@rollfuse/sdk-js";
 
 const client = new RollfuseClient({
   baseUrl: "https://api.rollfuse.com",
-  credential: process.env.GROWTH_OPS_CREDENTIAL!, // read wherever you keep secrets; the SDK never reads it itself
+  credential: process.env.ROLLFUSE_CREDENTIAL!, // read wherever you keep secrets; the SDK never reads it itself
 });
 
 // Optional: wait for the first Configuration fetch before serving traffic.

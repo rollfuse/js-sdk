@@ -50,8 +50,8 @@ describe("RollfuseClient", () => {
     });
 
     it("does not fall back to process.env for the credential", () => {
-      const originalEnv = process.env.GROWTH_OPS_CREDENTIAL;
-      process.env.GROWTH_OPS_CREDENTIAL = "svc_from_env.secret";
+      const originalEnv = process.env.ROLLFUSE_CREDENTIAL;
+      process.env.ROLLFUSE_CREDENTIAL = "svc_from_env.secret";
 
       try {
         expect(() => new RollfuseClient({ baseUrl: "http://api.test", credential: "" })).toThrow(
@@ -59,9 +59,9 @@ describe("RollfuseClient", () => {
         );
       } finally {
         if (originalEnv === undefined) {
-          delete process.env.GROWTH_OPS_CREDENTIAL;
+          delete process.env.ROLLFUSE_CREDENTIAL;
         } else {
-          process.env.GROWTH_OPS_CREDENTIAL = originalEnv;
+          process.env.ROLLFUSE_CREDENTIAL = originalEnv;
         }
       }
     });

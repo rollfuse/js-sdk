@@ -1,6 +1,12 @@
 {
   "name": "@rollfuse/evaluation-core",
   "version": "0.2.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rollfuse/js-sdk.git",
+    "directory": "packages/evaluation-core"
+  },
   "description": "Dependency-free, browser-and-Node-safe deterministic flag evaluation and bucketing, shared by @rollfuse/sdk-js and @rollfuse/sdk-browser so they can never silently drift.",
   "type": "module",
   "sideEffects": false,

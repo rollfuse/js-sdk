@@ -1,7 +1,13 @@
 {
   "name": "@rollfuse/sdk-js",
   "version": "0.1.1",
-  "description": "Node.js SDK that evaluates Growth Operations Platform feature flags locally against cached, versioned configuration (ADR 0004: Evaluate Flags Locally in SDKs).",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rollfuse/js-sdk.git",
+    "directory": "packages/sdk"
+  },
+  "description": "Node.js SDK that evaluates rollfuse feature flags locally against cached, versioned configuration (ADR 0004: Evaluate Flags Locally in SDKs).",
   "type": "module",
   "sideEffects": false,
   "publishConfig": {

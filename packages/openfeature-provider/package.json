@@ -1,6 +1,12 @@
 {
   "name": "@rollfuse/openfeature-provider",
   "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rollfuse/js-sdk.git",
+    "directory": "packages/openfeature-provider"
+  },
   "description": "OpenFeature server-side provider for rollfuse: use the CNCF OpenFeature JS SDK with rollfuse as the backing flag system.",
   "type": "module",
   "sideEffects": false,
