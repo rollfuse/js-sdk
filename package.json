@@ -12,11 +12,11 @@
     "build": "npm run build -w packages/contracts -w packages/evaluation-core -w packages/sdk -w packages/sdk-browser -w packages/sdk-react -w packages/openfeature-provider",
     "typecheck": "npm run typecheck -w packages/contracts -w packages/evaluation-core -w packages/sdk -w packages/sdk-browser -w packages/sdk-react -w packages/openfeature-provider",
     "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test -w packages/evaluation-core -w packages/sdk -w packages/sdk-browser -w packages/sdk-react -w packages/openfeature-provider --if-present",
+    "test": "npm run test -w packages/contracts -w packages/evaluation-core -w packages/sdk -w packages/sdk-browser -w packages/sdk-react -w packages/openfeature-provider --if-present",
     "changeset": "changeset",
     "changeset:status": "changeset status --verbose",
     "version": "changeset version",
-    "release": "npm run build && changeset publish",
+    "release": "npm run build && npm test && changeset publish",
     "release:dry-run": "./scripts/release-dry-run.sh",
     "check-workspace-ranges": "node scripts/check-workspace-ranges.mjs"
   },
