@@ -5,6 +5,7 @@ import { ConfigurationClient } from "../src/configuration-client.js";
 const validConfig: Configuration = {
   environment_id: "env_1",
   version: 3,
+  poll_interval_seconds: 30,
   flags: [
     {
       flag_key: "checkout-redesign",

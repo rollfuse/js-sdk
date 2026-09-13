@@ -43,9 +43,39 @@
         "additionalProperties": true,
         "description": "The event's JSON document. Its shape varies by event_type; it is an opaque, schema-less record of what happened."
       },
+      "actor": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AuditEventActor"
+          }
+        ],
+        "description": "Who or what triggered the recorded mutation. Omitted entirely for an event recorded before actor attribution existed, or by a module that has not adopted it — an absent actor is never defaulted to a specific value."
+      },
       "created_at": {
         "type": "string",
         "format": "date-time"
+      }
+    }
+  },
+  "AuditEventActor": {
+    "type": "object",
+    "required": [
+      "type"
+    ],
+    "properties": {
+      "type": {
+        "type": "string",
+        "enum": [
+          "member",
+          "staff",
+          "system",
+          "gateway"
+        ],
+        "description": "member is an authenticated Member acting through a self-serve surface, staff is a platform StaffMember acting across Organizations through a staff-only surface (e.g. issuing a refund), system is the platform's own scheduled processing (e.g. renewal), and gateway is an inbound payment-gateway webhook."
+      },
+      "id": {
+        "type": "string",
+        "description": "The acting Member's or StaffMember's id. Present only for a member or staff actor; a system or gateway actor carries none."
       }
     }
   },
@@ -54,7 +84,8 @@
     "required": [
       "audit_events",
       "limit",
-      "offset"
+      "offset",
+      "has_more"
     ],
     "properties": {
       "audit_events": {
@@ -70,6 +101,10 @@
       "offset": {
         "type": "integer",
         "description": "The pagination offset actually applied."
+      },
+      "has_more": {
+        "type": "boolean",
+        "description": "Whether at least one further audit event exists beyond this page. Always false for an unbounded export request, since nothing was capped. A response never presents a subset as if it were the whole."
       }
     }
   },
@@ -102,7 +137,8 @@
     "required": [
       "feature_flags",
       "limit",
-      "offset"
+      "offset",
+      "has_more"
     ],
     "properties": {
       "feature_flags": {
@@ -118,6 +154,10 @@
       "offset": {
         "type": "integer",
         "description": "The pagination offset actually applied."
+      },
+      "has_more": {
+        "type": "boolean",
+        "description": "Whether at least one further feature flag exists beyond this page. A response never presents a subset as if it were the whole."
       }
     }
   },
@@ -654,6 +694,20 @@
       }
     }
   },
+  "RenameProjectRequest": {
+    "type": "object",
+    "required": [
+      "name"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      }
+    }
+  },
   "Project": {
     "type": "object",
     "required": [
@@ -708,6 +762,105 @@
       }
     }
   },
+  "RenameEnvironmentRequest": {
+    "type": "object",
+    "required": [
+      "name"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      }
+    }
+  },
+  "SetEnvironmentProductionRequest": {
+    "type": "object",
+    "required": [
+      "is_production"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "is_production": {
+        "type": "boolean"
+      }
+    }
+  },
+  "SetEnvironmentApprovalPolicyRequest": {
+    "type": "object",
+    "required": [
+      "requires_approval",
+      "disable_exempt_from_approval"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "requires_approval": {
+        "type": "boolean"
+      },
+      "disable_exempt_from_approval": {
+        "type": "boolean"
+      }
+    }
+  },
+  "CloneEnvironmentRequest": {
+    "type": "object",
+    "required": [
+      "name",
+      "slug"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "slug": {
+        "type": "string"
+      }
+    }
+  },
+  "CopyFailure": {
+    "type": "object",
+    "required": [
+      "feature_flag_id",
+      "reason"
+    ],
+    "properties": {
+      "feature_flag_id": {
+        "type": "string"
+      },
+      "reason": {
+        "type": "string"
+      }
+    }
+  },
+  "CloneEnvironmentResponse": {
+    "type": "object",
+    "required": [
+      "environment",
+      "copied_feature_flag_ids",
+      "skipped"
+    ],
+    "properties": {
+      "environment": {
+        "$ref": "#/components/schemas/Environment"
+      },
+      "copied_feature_flag_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "skipped": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/CopyFailure"
+        },
+        "description": "Every FeatureFlag whose configuration could not be copied, named explicitly rather than failing the clone silently."
+      }
+    }
+  },
   "Environment": {
     "type": "object",
     "required": [
@@ -715,6 +868,9 @@
       "project_id",
       "name",
       "slug",
+      "is_production",
+      "requires_approval",
+      "disable_exempt_from_approval",
       "created_at",
       "updated_at"
     ],
@@ -730,6 +886,18 @@
       },
       "slug": {
         "type": "string"
+      },
+      "is_production": {
+        "type": "boolean",
+        "description": "Whether this environment is marked as production. Explicit, operator-set state, never inferred from name or slug — surfaces that require proportional confirmation before a destructive or high-impact action (e.g. the kill switch) read this field."
+      },
+      "requires_approval": {
+        "type": "boolean",
+        "description": "Whether a manual EnvironmentFlagConfig write to this environment is refused pending approval."
+      },
+      "disable_exempt_from_approval": {
+        "type": "boolean",
+        "description": "Whether the distinct kill-switch (disable) operation bypasses requires_approval. Only meaningful when requires_approval is true; defaults to true so a newly-gated environment never silently blocks its own kill switch."
       },
       "created_at": {
         "type": "string",
@@ -772,6 +940,10 @@
         "minLength": 1,
         "maxLength": 160
       },
+      "description": {
+        "type": "string",
+        "maxLength": 1000
+      },
       "key": {
         "type": "string",
         "minLength": 1,
@@ -784,6 +956,45 @@
         "items": {
           "$ref": "#/components/schemas/VariationInput"
         }
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "maxItems": 20
+      }
+    }
+  },
+  "RenameFeatureFlagRequest": {
+    "type": "object",
+    "required": [
+      "name"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      },
+      "description": {
+        "type": "string",
+        "maxLength": 1000
+      },
+      "key": {
+        "type": "string",
+        "description": "Optional. A feature flag's key is immutable after creation: if supplied, it MUST equal the flag's current key, or the request is refused with feature_flag_key_immutable. Omit this field entirely on a routine rename."
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "maxItems": 20,
+        "description": "Optional. When present, replaces the flag's tags wholesale. Omit this field entirely to leave existing tags untouched."
       }
     }
   },
@@ -810,8 +1021,10 @@
       "id",
       "project_id",
       "name",
+      "description",
       "key",
       "variations",
+      "tags",
       "created_at",
       "updated_at",
       "archived_at"
@@ -826,6 +1039,9 @@
       "name": {
         "type": "string"
       },
+      "description": {
+        "type": "string"
+      },
       "key": {
         "type": "string"
       },
@@ -833,6 +1049,12 @@
         "type": "array",
         "items": {
           "$ref": "#/components/schemas/Variation"
+        }
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
         }
       },
       "created_at": {
@@ -1017,6 +1239,213 @@
       },
       "enabled": {
         "type": "boolean"
+      }
+    }
+  },
+  "HistoryPointActor": {
+    "type": "object",
+    "required": [
+      "type"
+    ],
+    "properties": {
+      "type": {
+        "type": "string",
+        "enum": [
+          "member",
+          "staff",
+          "system",
+          "gateway"
+        ]
+      },
+      "id": {
+        "type": "string",
+        "description": "Present only for a member or staff actor."
+      }
+    }
+  },
+  "HistoryPoint": {
+    "type": "object",
+    "required": [
+      "id",
+      "environment_id",
+      "feature_flag_id",
+      "environment_flag_config_id",
+      "configuration",
+      "created_at"
+    ],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "environment_id": {
+        "type": "string"
+      },
+      "feature_flag_id": {
+        "type": "string"
+      },
+      "environment_flag_config_id": {
+        "type": "string"
+      },
+      "configuration": {
+        "type": "object",
+        "description": "The resulting configuration's targeting-model snapshot, the same shape as EnvironmentFlagConfig's own enabled/ default_variation_id/rules fields."
+      },
+      "actor": {
+        "$ref": "#/components/schemas/HistoryPointActor"
+      },
+      "restored_from_point_id": {
+        "type": "string",
+        "description": "Present only when this point is the result of a restore: the id of the history point it restored."
+      },
+      "promoted_from_environment_id": {
+        "type": "string",
+        "description": "Present only when this point is the result of a promotion: the id of the source environment."
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time"
+      }
+    }
+  },
+  "ConfigurationSnapshot": {
+    "type": "object",
+    "required": [
+      "enabled",
+      "default_variation_id",
+      "rules"
+    ],
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "default_variation_id": {
+        "type": "string"
+      },
+      "rules": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Rule"
+        }
+      }
+    }
+  },
+  "HistoryPointList": {
+    "type": "object",
+    "required": [
+      "points",
+      "has_more"
+    ],
+    "properties": {
+      "points": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/HistoryPoint"
+        }
+      },
+      "has_more": {
+        "type": "boolean",
+        "description": "True when more history points exist beyond this page."
+      }
+    }
+  },
+  "FieldChange": {
+    "type": "object",
+    "required": [
+      "field",
+      "before",
+      "after"
+    ],
+    "properties": {
+      "field": {
+        "type": "string",
+        "enum": [
+          "enabled",
+          "default_variation_id"
+        ]
+      },
+      "before": {},
+      "after": {}
+    }
+  },
+  "RuleDifference": {
+    "type": "object",
+    "required": [
+      "position",
+      "presence"
+    ],
+    "properties": {
+      "position": {
+        "type": "integer"
+      },
+      "presence": {
+        "type": "string",
+        "enum": [
+          "both",
+          "before_only",
+          "after_only"
+        ],
+        "description": "\"before_only\"/\"after_only\" means the rule at this position exists on only one side, per flag-change-history's \"A construct is present on one side only\" scenario."
+      },
+      "before": {
+        "$ref": "#/components/schemas/Rule"
+      },
+      "after": {
+        "$ref": "#/components/schemas/Rule"
+      }
+    }
+  },
+  "Difference": {
+    "type": "object",
+    "required": [
+      "identical",
+      "fields",
+      "rules"
+    ],
+    "properties": {
+      "identical": {
+        "type": "boolean",
+        "description": "True when the two compared configurations are identical. Explicit rather than inferred from empty fields/rules arrays, per flag-change-history's \"The configurations are identical\" scenario."
+      },
+      "fields": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/FieldChange"
+        }
+      },
+      "rules": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/RuleDifference"
+        }
+      }
+    }
+  },
+  "FlagComparison": {
+    "type": "object",
+    "required": [
+      "feature_flag_id",
+      "feature_flag_key",
+      "presence",
+      "difference"
+    ],
+    "properties": {
+      "feature_flag_id": {
+        "type": "string"
+      },
+      "feature_flag_key": {
+        "type": "string"
+      },
+      "presence": {
+        "type": "string",
+        "enum": [
+          "both",
+          "before_only",
+          "after_only"
+        ],
+        "description": "\"before_only\"/\"after_only\" means the flag is configured in only one of the two compared environments."
+      },
+      "difference": {
+        "$ref": "#/components/schemas/Difference"
       }
     }
   },
@@ -1699,7 +2128,8 @@
         "description": "Optional. Pins the Connector to a specific, approved version of template_id. Omitted resolves to template_id's highest currently approved version at creation time. Immutable after creation except via an explicit later edit — see UpdateConnectorRequest."
       },
       "source_url": {
-        "type": "string"
+        "type": "string",
+        "description": "Must be an https URL. It is parsed and its scheme is checked, so a value that merely begins with \"https\" but is not a valid https URL is refused. The pull secret is presented to this URL as a bearer credential on every sync, so a plaintext destination is never accepted."
       },
       "secret": {
         "type": "string"
@@ -1733,7 +2163,8 @@
         "description": "Optional. Only consulted when template_id is also supplied; omitted then resolves to template_id's highest currently approved version."
       },
       "source_url": {
-        "type": "string"
+        "type": "string",
+        "description": "Must be an https URL, checked the same way CreateConnectorRequest.source_url is."
       },
       "metric_definition_id": {
         "type": "string"
@@ -1758,7 +2189,8 @@
     ],
     "properties": {
       "source_url": {
-        "type": "string"
+        "type": "string",
+        "description": "Must be an https URL, checked the same way CreateConnectorRequest.source_url is."
       },
       "secret": {
         "type": "string",
@@ -1911,9 +2343,10 @@
           "non_2xx",
           "oversized",
           "mapping_mismatch",
+          "insecure_destination",
           "internal_error"
         ],
-        "description": "Absent on success or when this Connector has never been synced. Only mapping_mismatch counts toward the automatic circuit breaker that transitions status to broken."
+        "description": "Absent on success or when this Connector has never been synced. Only mapping_mismatch counts toward the automatic circuit breaker that transitions status to broken. insecure_destination means this Connector's source_url is not an https URL: it was configured before that was required, and no sync will present the pull secret to it until the source_url is corrected."
       },
       "last_sync_observation_count": {
         "type": "integer",
@@ -2013,9 +2446,10 @@
           "non_2xx",
           "oversized",
           "mapping_mismatch",
+          "insecure_destination",
           "internal_error"
         ],
-        "description": "Absent on success or when this Connector has never been synced. Only mapping_mismatch counts toward the automatic circuit breaker that transitions status to broken."
+        "description": "Absent on success or when this Connector has never been synced. Only mapping_mismatch counts toward the automatic circuit breaker that transitions status to broken. insecure_destination means this Connector's source_url is not an https URL: it was configured before that was required, and no sync will present the pull secret to it until the source_url is corrected."
       },
       "last_sync_observation_count": {
         "type": "integer",
@@ -2452,6 +2886,16 @@
       "public": {
         "type": "boolean",
         "description": "Issue this credential as safe to embed in browser-visible code. MUST be restricted to exactly the config:read scope — issuing a Public credential with any other scope is rejected. Defaults to false."
+      },
+      "name": {
+        "type": "string",
+        "maxLength": 160,
+        "description": "Optional human-readable label, so an operator can tell two credentials apart in the listing. Omitted means unnamed."
+      },
+      "expires_at": {
+        "type": "string",
+        "format": "date-time",
+        "description": "Optional instant at which this credential stops authenticating requests. Omitted means it never expires. An expired credential is refused exactly like an unknown one."
       }
     }
   },
@@ -2511,6 +2955,15 @@
       "created_at": {
         "type": "string",
         "format": "date-time"
+      },
+      "name": {
+        "type": "string",
+        "description": "The human-readable label supplied at issue time. Absent when the credential is unnamed."
+      },
+      "expires_at": {
+        "type": "string",
+        "format": "date-time",
+        "description": "The instant this credential stops authenticating requests. Absent when it never expires."
       }
     }
   },
@@ -2798,6 +3251,196 @@
     "properties": {
       "valid": {
         "type": "boolean"
+      }
+    }
+  },
+  "RequestStaffMagicLinkRequest": {
+    "type": "object",
+    "required": [
+      "email"
+    ],
+    "properties": {
+      "email": {
+        "type": "string",
+        "format": "email"
+      }
+    }
+  },
+  "RequestStaffMagicLinkResponse": {
+    "type": "object",
+    "required": [
+      "message"
+    ],
+    "description": "Deliberately identical whether or not the email matched an active StaffMember — see requestStaffMagicLink's description.",
+    "properties": {
+      "message": {
+        "type": "string"
+      }
+    }
+  },
+  "PeekStaffMagicLinkResponse": {
+    "type": "object",
+    "required": [
+      "valid"
+    ],
+    "description": "Reports validity only. It never names the StaffMember the token belongs to.",
+    "properties": {
+      "valid": {
+        "type": "boolean"
+      }
+    }
+  },
+  "StaffMember": {
+    "type": "object",
+    "required": [
+      "id",
+      "email",
+      "name",
+      "status",
+      "permissions"
+    ],
+    "description": "A platform-staff identity. It has no organization field by design: a StaffMember acts across every Organization and is a distinct identity from a Member, even when the same email also holds a Member account somewhere. It carries no token or hash field either, so no staff endpoint can leak credential material.",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "email": {
+        "type": "string",
+        "format": "email"
+      },
+      "name": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "active",
+          "disabled"
+        ]
+      },
+      "permissions": {
+        "type": "array",
+        "description": "The staff permissions this StaffMember was granted, drawn from a small fixed catalog. Read-only here: granting and revoking are out-of-band operations with no API surface.",
+        "items": {
+          "type": "string",
+          "enum": [
+            "billing:refund",
+            "support:view",
+            "support:respond",
+            "support:close"
+          ]
+        }
+      }
+    }
+  },
+  "ConfirmStaffMagicLinkResponse": {
+    "type": "object",
+    "required": [
+      "staff_member",
+      "session_token",
+      "expires_at"
+    ],
+    "description": "The only place the plaintext StaffSession token is ever returned; only its one-way hash is persisted.",
+    "properties": {
+      "staff_member": {
+        "$ref": "#/components/schemas/StaffMember"
+      },
+      "session_token": {
+        "type": "string"
+      },
+      "expires_at": {
+        "type": "string",
+        "format": "date-time"
+      }
+    }
+  },
+  "CurrentStaffSessionResponse": {
+    "type": "object",
+    "required": [
+      "staff_member"
+    ],
+    "description": "The staff identity behind a presented StaffSession. It has no session-token field by design, so the endpoint cannot leak the token it is looked up by.",
+    "properties": {
+      "staff_member": {
+        "$ref": "#/components/schemas/StaffMember"
+      }
+    }
+  },
+  "IssueRefundRequest": {
+    "type": "object",
+    "required": [
+      "amount"
+    ],
+    "description": "A staff-issued refund request against a one-off charge.\n\nIt carries no currency: a refund is always denominated in the charge's own currency, which the API reads from the charge itself, so a currency mismatch is impossible rather than merely rejected.",
+    "properties": {
+      "amount": {
+        "type": "integer",
+        "format": "int64",
+        "minimum": 1,
+        "description": "The amount to refund, in the charge's currency's smallest unit (e.g. cents). Must be positive and must not exceed the charge's remaining refundable balance."
+      }
+    }
+  },
+  "StaffChargeResponse": {
+    "type": "object",
+    "required": [
+      "charge"
+    ],
+    "description": "The refund-facing view of a one-off charge.",
+    "properties": {
+      "charge": {
+        "$ref": "#/components/schemas/StaffCharge"
+      }
+    }
+  },
+  "StaffCharge": {
+    "type": "object",
+    "required": [
+      "id",
+      "organization_id",
+      "status",
+      "amount",
+      "currency",
+      "refunded_amount",
+      "remaining_refundable_amount"
+    ],
+    "description": "A one-off charge as platform staff see it for refund purposes. Every amount is an integer in currency's smallest unit (e.g. cents), never a float.",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "organization_id": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "created",
+          "pending",
+          "paid",
+          "expired",
+          "failed",
+          "disputed"
+        ],
+        "description": "The charge's own lifecycle status. A refund never changes it: a fully refunded charge stays `paid`, since a refund is money voluntarily returned, not a payment reversed by the cardholder's bank (which is a dispute, and does move the status to `disputed`). `failed` means the gateway attempted the charge and was declined, as opposed to `expired`, which means an asynchronous method's payment window elapsed with nobody ever attempting to pay it."
+      },
+      "amount": {
+        "type": "integer",
+        "format": "int64",
+        "description": "The amount originally charged."
+      },
+      "currency": {
+        "type": "string"
+      },
+      "refunded_amount": {
+        "type": "integer",
+        "format": "int64",
+        "description": "How much of this charge the payment gateway has confirmed as refunded so far, across every refund against it. It moves only on a gateway webhook confirmation, never on a refund request, so it can briefly lag a refund just issued."
+      },
+      "remaining_refundable_amount": {
+        "type": "integer",
+        "format": "int64",
+        "description": "`amount` minus `refunded_amount` — how much of this charge is still refundable. Returned rather than left to the caller so the two can never be read inconsistently."
       }
     }
   },
@@ -3212,6 +3855,103 @@
           "null"
         ],
         "format": "date-time"
+      },
+      "name": {
+        "type": "string",
+        "description": "The human-readable label supplied at issue time. Absent when the credential is unnamed."
+      },
+      "expires_at": {
+        "type": "string",
+        "format": "date-time",
+        "description": "The instant this credential stops authenticating requests. Absent when it never expires."
+      },
+      "last_used_at": {
+        "type": "string",
+        "format": "date-time",
+        "description": "The instant this credential last authenticated a request. ABSENT means it has never been used — that is how a never-used credential is distinguished from one used at a known instant. Recorded asynchronously, so it may lag a request by seconds."
+      }
+    }
+  },
+  "RotatedCredential": {
+    "type": "object",
+    "required": [
+      "id",
+      "organization_id",
+      "project_id",
+      "environment_id",
+      "scopes",
+      "public",
+      "status",
+      "created_at",
+      "token",
+      "previous_secret_expires_at"
+    ],
+    "description": "A rotated credential: its unchanged metadata, the replacement token (disclosed here once and never again) and the instant the previous secret stops being accepted.",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "organization_id": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "environment_id": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "scopes": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "config:read",
+            "metrics:write",
+            "acquisition:write",
+            "identity:write"
+          ]
+        }
+      },
+      "public": {
+        "type": "boolean"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "active",
+          "revoked"
+        ]
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "revoked_at": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "expires_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "last_used_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "token": {
+        "type": "string",
+        "description": "The plaintext replacement token. Returned only in this rotation response; no other response ever includes it."
+      },
+      "previous_secret_expires_at": {
+        "type": "string",
+        "format": "date-time",
+        "description": "The instant the secret being replaced stops being accepted."
       }
     }
   },
@@ -3225,7 +3965,7 @@
     "properties": {
       "url": {
         "type": "string",
-        "description": "Must be an http(s) URL."
+        "description": "Must be an https URL. It is parsed and its scheme is checked, so a value that merely begins with \"https\" but is not a valid https URL is refused."
       },
       "event_types": {
         "type": "array",
@@ -3330,6 +4070,35 @@
       "updated_at": {
         "type": "string",
         "format": "date-time"
+      }
+    }
+  },
+  "ListWebhookDeliveriesResponse": {
+    "type": "object",
+    "required": [
+      "deliveries",
+      "limit",
+      "offset",
+      "has_more"
+    ],
+    "properties": {
+      "deliveries": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/WebhookDeliveryMetadata"
+        }
+      },
+      "limit": {
+        "type": "integer",
+        "description": "The pagination limit actually applied (default when none supplied)."
+      },
+      "offset": {
+        "type": "integer",
+        "description": "The pagination offset actually applied."
+      },
+      "has_more": {
+        "type": "boolean",
+        "description": "Whether at least one further delivery exists beyond this page. A response never presents a subset as if it were the whole."
       }
     }
   },
@@ -3569,7 +4338,8 @@
     "required": [
       "environment_id",
       "version",
-      "flags"
+      "flags",
+      "poll_interval_seconds"
     ],
     "properties": {
       "environment_id": {
@@ -3577,13 +4347,17 @@
       },
       "version": {
         "type": "integer",
-        "description": "Monotonically increasing Configuration Version for this Environment. Advances whenever a FeatureFlag, its Variations, or an EnvironmentFlagConfig affecting this Environment is created, updated or removed."
+        "description": "Monotonically increasing Configuration Version for this Environment. Advances whenever a FeatureFlag, its Variations, or an EnvironmentFlagConfig affecting this Environment is created, updated or removed. Also served as GET /v1/config's ETag response header (quoted, e.g. \"v3\") — a request carrying that value in If-None-Match gets 304 Not Modified with no body instead of a full Configuration."
       },
       "flags": {
         "type": "array",
         "items": {
           "$ref": "#/components/schemas/FlagConfig"
         }
+      },
+      "poll_interval_seconds": {
+        "type": "integer",
+        "description": "Advised interval, in seconds, for a client polling GET /v1/config. Paired with the ETag/If-None-Match support above: a client polling at this interval and presenting its last ETag pays only a 304 on most polls."
       }
     }
   },
@@ -3721,6 +4495,10 @@
         "items": {
           "$ref": "#/components/schemas/ExposureEvent"
         }
+      },
+      "has_more": {
+        "type": "boolean",
+        "description": "Whether more ExposureEvents exist beyond this page. Set by GET /v1/environments/{environment_id}/feature-flags/{feature_flag_id}/exposure-events; absent from GET /v1/experiments/{experiment_id}/exposure-events."
       }
     }
   },
@@ -3768,6 +4546,7 @@
     "properties": {
       "events": {
         "type": "array",
+        "maxItems": 100,
         "items": {
           "$ref": "#/components/schemas/ExposureEventSubmission"
         }
@@ -3921,6 +4700,10 @@
       "name": {
         "type": "string"
       },
+      "description": {
+        "type": "string",
+        "maxLength": 1000
+      },
       "key": {
         "type": "string"
       },
@@ -3938,15 +4721,35 @@
       }
     }
   },
+  "RenameMetricDefinitionRequest": {
+    "type": "object",
+    "required": [
+      "name"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      },
+      "description": {
+        "type": "string",
+        "maxLength": 1000
+      }
+    }
+  },
   "MetricDefinition": {
     "type": "object",
     "required": [
       "id",
       "project_id",
       "name",
+      "description",
       "key",
       "aggregation_type",
       "unit",
+      "archived_at",
       "created_at",
       "updated_at"
     ],
@@ -3958,6 +4761,9 @@
         "type": "string"
       },
       "name": {
+        "type": "string"
+      },
+      "description": {
         "type": "string"
       },
       "key": {
@@ -3974,6 +4780,14 @@
       },
       "unit": {
         "type": "string"
+      },
+      "archived_at": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time",
+        "description": "When the metric definition was archived, or null when it is active. Archiving is a soft state: it stops being offered for new use, but every existing Guardrail, Connector or Observation referencing it continues to resolve."
       },
       "created_at": {
         "type": "string",
@@ -4094,6 +4908,10 @@
         "items": {
           "$ref": "#/components/schemas/Observation"
         }
+      },
+      "has_more": {
+        "type": "boolean",
+        "description": "Whether more Observations exist beyond this page. Set by GET /v1/environments/{environment_id}/metric-definitions/{metric_definition_id}/observations and GET /v1/environments/{environment_id}/observations; absent from GET /v1/experiments/{experiment_id}/observations."
       }
     }
   },
@@ -4471,6 +5289,186 @@
       }
     }
   },
+  "OrganizationSubscriptionStatus": {
+    "type": "object",
+    "required": [
+      "organization_id",
+      "suspended"
+    ],
+    "properties": {
+      "organization_id": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "trialing",
+          "active",
+          "past_due",
+          "suspended",
+          "canceled"
+        ],
+        "description": "Absent when the Organization has no Subscription at all — a legitimate state, not an error."
+      },
+      "suspended": {
+        "type": "boolean",
+        "description": "True only for a suspended Subscription. It is the one question the console shell asks, answered here rather than left to every caller to re-derive from `status`."
+      }
+    }
+  },
+  "ReplacePaymentMethodRequest": {
+    "type": "object",
+    "required": [
+      "payment_method_id"
+    ],
+    "properties": {
+      "payment_method_id": {
+        "type": "string",
+        "description": "The payment gateway's own id for an instrument already collected and verified by the browser. No card data is ever sent to this API."
+      }
+    }
+  },
+  "PaymentMethodSummary": {
+    "type": "object",
+    "required": [
+      "brand"
+    ],
+    "description": "Identifies a saved instrument without describing it well enough to use. It never carries a full instrument number: `last4` is at most four digits, and there is no other numeric field.",
+    "properties": {
+      "brand": {
+        "type": "string",
+        "description": "The provider's brand label for the instrument (e.g. `visa`), or the method type for an instrument with no brand.",
+        "example": "visa"
+      },
+      "last4": {
+        "type": "string",
+        "description": "Exactly four digits. Omitted for an instrument with no trailing digits to show.",
+        "example": "4242"
+      },
+      "exp_month": {
+        "type": "integer",
+        "description": "1-12. Omitted together with exp_year when the instrument has no expiry.",
+        "example": 12
+      },
+      "exp_year": {
+        "type": "integer",
+        "example": 2030
+      }
+    }
+  },
+  "OrganizationPaymentMethod": {
+    "type": "object",
+    "required": [
+      "organization_id",
+      "present"
+    ],
+    "properties": {
+      "organization_id": {
+        "type": "string"
+      },
+      "present": {
+        "type": "boolean",
+        "description": "False when the Organization has nothing on record — including when the provider no longer holds the instrument it had. A legitimate state the caller renders as an offer to add one, not an error."
+      },
+      "payment_method": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PaymentMethodSummary"
+          }
+        ],
+        "description": "Omitted when `present` is false."
+      }
+    }
+  },
+  "OrganizationCharge": {
+    "type": "object",
+    "required": [
+      "id",
+      "organization_id",
+      "status",
+      "amount",
+      "currency",
+      "refunded_amount",
+      "created_at"
+    ],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "organization_id": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "created",
+          "pending",
+          "paid",
+          "failed",
+          "expired",
+          "disputed"
+        ]
+      },
+      "amount": {
+        "type": "integer",
+        "format": "int64",
+        "description": "Integer amount in the currency's smallest unit, never a float."
+      },
+      "currency": {
+        "type": "string",
+        "example": "BRL"
+      },
+      "refunded_amount": {
+        "type": "integer",
+        "format": "int64",
+        "description": "The gateway-confirmed refunded total, in the same currency. Zero for a charge nothing has been refunded against."
+      },
+      "hosted_invoice_url": {
+        "type": "string",
+        "format": "uri",
+        "description": "The gateway-hosted invoice for this charge. Omitted — never an empty string — when the gateway published none, so a client renders no link at all rather than a link to nowhere."
+      },
+      "receipt_url": {
+        "type": "string",
+        "format": "uri",
+        "description": "The gateway-hosted receipt for this charge, omitted on the same terms as `hosted_invoice_url`."
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time"
+      }
+    }
+  },
+  "OrganizationChargeList": {
+    "type": "object",
+    "required": [
+      "charges",
+      "has_more"
+    ],
+    "properties": {
+      "charges": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/OrganizationCharge"
+        }
+      },
+      "has_more": {
+        "type": "boolean",
+        "description": "True when the Organization has older charges than this capped page carries."
+      }
+    }
+  },
+  "OrganizationChargeItem": {
+    "type": "object",
+    "required": [
+      "charge"
+    ],
+    "properties": {
+      "charge": {
+        "$ref": "#/components/schemas/OrganizationCharge"
+      }
+    }
+  },
   "PlanCatalogEntry": {
     "type": "object",
     "required": [
@@ -4516,6 +5514,163 @@
       }
     }
   },
+  "PublicOverageRate": {
+    "type": "object",
+    "required": [
+      "resource_key",
+      "amount_per_unit",
+      "per_units"
+    ],
+    "properties": {
+      "resource_key": {
+        "type": "string",
+        "enum": [
+          "project",
+          "environment",
+          "feature_flag",
+          "segment",
+          "guardrail",
+          "experiment",
+          "webhook_endpoint",
+          "seat",
+          "mtu"
+        ]
+      },
+      "amount_per_unit": {
+        "type": "integer",
+        "format": "int64",
+        "description": "An integer amount in the price's currency's smallest unit (e.g. centavos), charged per per_units units of usage beyond the plan's included allowance for this resource."
+      },
+      "per_units": {
+        "type": "integer",
+        "format": "int64",
+        "description": "The block size amount_per_unit is charged per, e.g. 1000 for \"R$1,50 per 1000 MTU\". Always at least 1. A partial final block is billed as a whole one."
+      }
+    }
+  },
+  "PublicBillingPrice": {
+    "type": "object",
+    "required": [
+      "id",
+      "amount",
+      "currency",
+      "interval",
+      "is_default",
+      "overage_rates"
+    ],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "amount": {
+        "type": "integer",
+        "format": "int64",
+        "description": "An integer amount in the smallest unit of currency (e.g. centavos), never a float. May be 0 — the platform's default plan is a zero-amount plan."
+      },
+      "currency": {
+        "type": "string"
+      },
+      "interval": {
+        "type": "string",
+        "enum": [
+          "month",
+          "year"
+        ]
+      },
+      "is_default": {
+        "type": "boolean",
+        "description": "True for the plan's own price for this billing interval, false for a simultaneously published variant (e.g. a pricing-experiment cohort's price). A reader with no assignment of its own renders the default."
+      },
+      "overage_rates": {
+        "type": "array",
+        "description": "What usage beyond a metered allowance costs under this price. Empty for a plan version with no metered grant.",
+        "items": {
+          "$ref": "#/components/schemas/PublicOverageRate"
+        }
+      }
+    }
+  },
+  "PublicBillingGrant": {
+    "type": "object",
+    "required": [
+      "resource_key",
+      "policy_kind"
+    ],
+    "properties": {
+      "resource_key": {
+        "type": "string",
+        "enum": [
+          "project",
+          "environment",
+          "feature_flag",
+          "segment",
+          "guardrail",
+          "experiment",
+          "webhook_endpoint",
+          "seat",
+          "mtu"
+        ]
+      },
+      "policy_kind": {
+        "type": "string",
+        "enum": [
+          "unlimited",
+          "finite",
+          "metered",
+          "capped_metered"
+        ]
+      },
+      "policy_limit": {
+        "type": "integer",
+        "description": "The included allowance. Absent only when policy_kind is \"unlimited\"."
+      }
+    }
+  },
+  "PublicPlanCatalogEntry": {
+    "type": "object",
+    "required": [
+      "plan",
+      "is_default",
+      "grants",
+      "prices"
+    ],
+    "properties": {
+      "plan": {
+        "$ref": "#/components/schemas/BillingPlan"
+      },
+      "is_default": {
+        "type": "boolean",
+        "description": "Exactly one catalog entry carries this flag: the plan every newly provisioned Organization is enrolled into."
+      },
+      "grants": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/PublicBillingGrant"
+        }
+      },
+      "prices": {
+        "type": "array",
+        "description": "Every price published against this plan version, not narrowed to one — there is no reading Organization to narrow by. Use is_default to pick the plan's own price per interval.",
+        "items": {
+          "$ref": "#/components/schemas/PublicBillingPrice"
+        }
+      }
+    }
+  },
+  "PublicPlanCatalog": {
+    "type": "object",
+    "required": [
+      "plans"
+    ],
+    "properties": {
+      "plans": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/PublicPlanCatalogEntry"
+        }
+      }
+    }
+  },
   "ChangePlanRequest": {
     "type": "object",
     "required": [
@@ -4550,6 +5705,329 @@
       "payment_method_id": {
         "type": "string",
         "description": "A payment method verified through a setup intent (see POST .../billing/setup-intent). Always required: checkout always collects a new payment method, even for an organization whose prior Subscription is canceled — it never reuses one."
+      }
+    }
+  },
+  "CreateSupportTicketRequest": {
+    "type": "object",
+    "required": [
+      "kind",
+      "description"
+    ],
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "feedback",
+          "ticket"
+        ]
+      },
+      "project_id": {
+        "type": "string",
+        "description": "Auto-captured by the console when the Member is viewing a Project-scoped screen; omitted otherwise."
+      },
+      "subject": {
+        "type": "string",
+        "description": "Required when kind is \"ticket\"."
+      },
+      "description": {
+        "type": "string"
+      },
+      "category": {
+        "type": "string",
+        "enum": [
+          "bug",
+          "dúvida",
+          "sugestão",
+          "outro"
+        ],
+        "description": "Required when kind is \"ticket\"; must be omitted for \"feedback\"."
+      }
+    }
+  },
+  "SupportTicket": {
+    "type": "object",
+    "required": [
+      "id",
+      "kind",
+      "description",
+      "created_at",
+      "updated_at"
+    ],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "feedback",
+          "ticket"
+        ]
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "subject": {
+        "type": "string",
+        "description": "Present only for kind \"ticket\"."
+      },
+      "description": {
+        "type": "string"
+      },
+      "category": {
+        "type": "string",
+        "enum": [
+          "bug",
+          "dúvida",
+          "sugestão",
+          "outro"
+        ],
+        "description": "Present only for kind \"ticket\"."
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "open",
+          "answered",
+          "resolved"
+        ],
+        "description": "Present only for kind \"ticket\" — a feedback entry's internal status is never exposed."
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updated_at": {
+        "type": "string",
+        "format": "date-time"
+      }
+    }
+  },
+  "ListSupportTicketsResponse": {
+    "type": "object",
+    "required": [
+      "support_tickets",
+      "limit",
+      "offset"
+    ],
+    "properties": {
+      "support_tickets": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/SupportTicket"
+        }
+      },
+      "limit": {
+        "type": "integer"
+      },
+      "offset": {
+        "type": "integer"
+      }
+    }
+  },
+  "AddSupportMessageRequest": {
+    "type": "object",
+    "required": [
+      "body"
+    ],
+    "properties": {
+      "body": {
+        "type": "string"
+      }
+    }
+  },
+  "SupportMessage": {
+    "type": "object",
+    "required": [
+      "id",
+      "ticket_id",
+      "author_type",
+      "author_id",
+      "body",
+      "created_at"
+    ],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "ticket_id": {
+        "type": "string"
+      },
+      "author_type": {
+        "type": "string",
+        "enum": [
+          "member",
+          "staff"
+        ]
+      },
+      "author_id": {
+        "type": "string"
+      },
+      "body": {
+        "type": "string"
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time"
+      }
+    }
+  },
+  "ListSupportMessagesResponse": {
+    "type": "object",
+    "required": [
+      "support_messages"
+    ],
+    "properties": {
+      "support_messages": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/SupportMessage"
+        }
+      }
+    }
+  },
+  "AddSupportMessageResponse": {
+    "type": "object",
+    "required": [
+      "message",
+      "status"
+    ],
+    "properties": {
+      "message": {
+        "$ref": "#/components/schemas/SupportMessage"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "open",
+          "answered",
+          "resolved"
+        ],
+        "description": "The ticket's status after this message was applied — reflects an auto-reopen when a Member replied on a resolved ticket."
+      }
+    }
+  },
+  "PresignSupportAttachmentRequest": {
+    "type": "object",
+    "required": [
+      "content_type",
+      "size_bytes"
+    ],
+    "properties": {
+      "ticket_id": {
+        "type": "string",
+        "description": "Set when the attachment targets a ticket/feedback entry directly. Exactly one of ticket_id/message_id must be set."
+      },
+      "message_id": {
+        "type": "string",
+        "description": "Set when the attachment targets a later reply. Exactly one of ticket_id/message_id must be set."
+      },
+      "content_type": {
+        "type": "string",
+        "enum": [
+          "image/jpeg",
+          "image/png"
+        ]
+      },
+      "size_bytes": {
+        "type": "integer",
+        "format": "int64",
+        "description": "Declared size; re-validated against the real object at confirm time."
+      }
+    }
+  },
+  "PresignSupportAttachmentResponse": {
+    "type": "object",
+    "required": [
+      "attachment_id",
+      "object_key",
+      "upload_url"
+    ],
+    "properties": {
+      "attachment_id": {
+        "type": "string"
+      },
+      "object_key": {
+        "type": "string",
+        "description": "Server-derived from the Organization, the owning ticket or message and this attachment_id. Informational only: the confirm endpoint derives it again from the recorded upload and accepts no object key of any kind."
+      },
+      "upload_url": {
+        "type": "string",
+        "description": "Presigned URL the client PUTs the object's bytes to directly."
+      }
+    }
+  },
+  "ConfirmSupportAttachmentRequest": {
+    "type": "object",
+    "properties": {
+      "ticket_id": {
+        "type": "string",
+        "description": "Optional. When set it MUST match the owner recorded when the upload was presigned; it is compared, never used to address anything. A value that disagrees is refused as a not-found."
+      },
+      "message_id": {
+        "type": "string",
+        "description": "Optional. Compared against the recorded owner exactly like ticket_id."
+      }
+    }
+  },
+  "SupportAttachment": {
+    "type": "object",
+    "required": [
+      "id",
+      "content_type",
+      "size_bytes",
+      "created_at"
+    ],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "ticket_id": {
+        "type": "string"
+      },
+      "message_id": {
+        "type": "string"
+      },
+      "content_type": {
+        "type": "string",
+        "enum": [
+          "image/jpeg",
+          "image/png"
+        ]
+      },
+      "size_bytes": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time"
+      }
+    }
+  },
+  "SupportAttachmentDownloadResponse": {
+    "type": "object",
+    "required": [
+      "download_url"
+    ],
+    "properties": {
+      "download_url": {
+        "type": "string"
+      }
+    }
+  },
+  "ListSupportAttachmentsResponse": {
+    "type": "object",
+    "required": [
+      "attachments"
+    ],
+    "properties": {
+      "attachments": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/SupportAttachment"
+        }
       }
     }
   }
