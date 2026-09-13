@@ -264,10 +264,18 @@ export interface paths {
         get: operations["getProject"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a project
+         * @description Requires a session for a Member holding projects:manage. Refused with project_has_dependents, naming every one, when an Environment, FeatureFlag, Segment, MetricDefinition, WebhookEndpoint or Connector still references the project. A project outside the caller's own Organization is rejected identically to an unknown one.
+         */
+        delete: operations["deleteProject"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Rename a project
+         * @description Requires a session for a Member holding projects:manage. Its slug is immutable after creation. A project outside the caller's own Organization is rejected identically to an unknown one.
+         */
+        patch: operations["renameProject"];
         trace?: never;
     };
     "/v1/projects/{project_id}/environments": {
@@ -310,6 +318,74 @@ export interface paths {
         get: operations["getEnvironment"];
         put?: never;
         post?: never;
+        /**
+         * Delete an environment
+         * @description Requires a session for a Member holding environments:manage. Refused with environment_has_dependents, naming every one, when a configuration, credential, rollout or experiment still references the environment. An environment outside the caller's own Project/Organization is rejected identically to an unknown one.
+         */
+        delete: operations["deleteEnvironment"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename an environment
+         * @description Requires a session for a Member holding environments:manage. Its slug is immutable after creation. An environment outside the caller's own Project/Organization is rejected identically to an unknown one.
+         */
+        patch: operations["renameEnvironment"];
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/environments/{environment_id}/production": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Mark or unmark an environment as production
+         * @description Requires a session for a Member holding environments:manage. The marking is explicit, operator-set state — never inferred from the environment's name or slug — read by surfaces that require proportional confirmation before a destructive or high-impact action, such as the kill switch.
+         */
+        patch: operations["setEnvironmentProduction"];
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/environments/{environment_id}/approval-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set an environment's approval policy for configuration changes
+         * @description Requires a session for a Member holding environments:manage. Sets whether the environment requires approval for a manual EnvironmentFlagConfig write, and whether the distinct kill-switch (disable) operation is exempt from that requirement — the position is a stated decision, never inferred, per add-flag-operations-essentials' "Disabling is subject to approval" scenario. A full approval request/grant flow is not yet implemented: while requires_approval is true, a non-exempt write is refused outright (409) rather than held pending.
+         */
+        patch: operations["setEnvironmentApprovalPolicy"];
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/environments/{environment_id}/clone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create an environment by cloning another
+         * @description Requires a session for a Member holding environments:manage. Creates a new environment and copies the source environment's flag configurations into it — never credentials or recorded traffic — per project-environment-management's "An Environment Can Be Created By Cloning Another" requirement. Each configuration is copied through the same manual write path as any other change, so it is validated and subject to the new environment's approval policy; a configuration that could not be copied is named in the response rather than failing the clone silently.
+         */
+        post: operations["cloneEnvironment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -356,10 +432,28 @@ export interface paths {
         get: operations["getFeatureFlag"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a feature flag
+         * @description Requires a session for a Member holding feature-flags:manage — the same gate the create, get and list operations on this resource family already apply.
+         *
+         *     Deletion is permanent and distinct from archive, which remains the reversible option. It is refused with feature_flag_has_dependents when a Rollout, Guardrail or Experiment still references the flag, naming every one of them. On success, the flag, its variations and every environment flag configuration referencing it are removed; its historical exposure events and audit events are retained.
+         *
+         *     A flag evaluated within the last 24 hours may still be receiving traffic; deleting it is refused with feature_flag_delete_requires_confirmation unless confirm=true is passed, since clients still evaluating it will fall back once it is gone. This warning is separate from, and does not override, the dependents refusal above.
+         *
+         *     A feature flag whose owning project belongs to another Organization is rejected identically to an unknown feature flag id.
+         */
+        delete: operations["deleteFeatureFlag"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Rename and/or redescribe a feature flag
+         * @description Requires a session for a Member holding feature-flags:manage — the same gate the create, get and list operations on this resource family already apply.
+         *
+         *     Updates the flag's name and description. Its key is immutable after creation: the key field is optional, and when supplied it MUST equal the flag's current key, or the request is refused with feature_flag_key_immutable rather than silently ignored.
+         *
+         *     A feature flag whose owning project belongs to another Organization is rejected identically to an unknown feature flag id.
+         */
+        patch: operations["renameFeatureFlag"];
         trace?: never;
     };
     "/v1/projects/{project_id}/feature-flags/{feature_flag_id}/archive": {
@@ -434,6 +528,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/environments/{environment_id}/feature-flags/{feature_flag_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn a feature flag off in an environment (kill switch)
+         * @description Requires a session for a Member holding environment-flag-configs:manage. A distinct operation, never a general configuration write: it turns the flag off without touching its targeting, so re-enabling later (a normal PUT with enabled=true and the same rules) restores exactly what was there. Records a flag.disabled audit event (distinct from flag.published) and a new HistoryPoint. Subject to the environment's approval policy, but independently exemptable from it via disable_exempt_from_approval — see PATCH .../approval-policy.
+         */
+        post: operations["disableEnvironmentFlagConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/feature-flags/{feature_flag_id}/environment-flag-configs": {
         parameters: {
             query?: never;
@@ -446,6 +560,146 @@ export interface paths {
          * @description Requires a session for a Member holding environment-flag-configs:manage. Returns one entry per Environment that has a configuration for this feature flag, added for the console's ResourcePicker (add-web-resource-picker). A feature flag belonging to another Organization is rejected identically to an unknown one.
          */
         get: operations["listEnvironmentFlagConfigsForFeatureFlag"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/environments/{environment_id}/feature-flags/{feature_flag_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an environment flag configuration's change history
+         * @description Requires a session for a Member holding environment-flag-configs:manage. Returns HistoryPoints newest first, one per successful configuration change (manual or rollout-driven), scoped to the caller's own Organization, per add-flag-operations-essentials' flag-change-history capability. Retained for a stated period (90 days by default; see FLAG_CHANGE_HISTORY_RETENTION), after which older points are swept.
+         */
+        get: operations["listFlagChangeHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/environments/{environment_id}/feature-flags/{feature_flag_id}/history/{history_point_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Retrieve one history point's full configuration
+         * @description Requires a session for a Member holding environment-flag-configs:manage. Returns a non-disclosing not-found response when the point does not exist or belongs to a different Organization than the caller's own.
+         */
+        get: operations["getFlagChangeHistoryPoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/environments/{environment_id}/feature-flags/{feature_flag_id}/history/{history_point_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a previous history point as a new change
+         * @description Requires a session for a Member holding environment-flag-configs:manage. Applies the point's configuration as a new change to its own Environment+FeatureFlag pair (not necessarily the pair named in the path, which is accepted only for a consistent, nested route shape), subject to the same validation and approval-policy rules as any other manual write, per flag-change-history's "A Previous Configuration Can Be Restored" requirement. Records a flag.restored audit event and a new HistoryPoint identifying the point that was restored.
+         */
+        post: operations["restoreFlagChangeHistoryPoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/environments/{environment_id}/feature-flags/{feature_flag_id}/history/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare two history points of the same flag and environment
+         * @description Requires a session for a Member holding environment-flag-configs:manage. Both before_id and after_id are history point ids, scoped to the caller's own Organization identically to the single-point retrieval endpoint. The difference is expressed in targeting-model terms (fields and rules), never as opaque text, per flag-change-history's "Two Points Can Be Compared" requirement.
+         */
+        get: operations["compareFlagChangeHistoryPoints"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/feature-flags/{feature_flag_id}/environment-flag-configs/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare the same flag's live configuration in two environments
+         * @description Requires a session for a Member holding environment-flag-configs:manage. before_environment_id and after_environment_id MUST both belong to the caller's own Organization and to the same Project as the feature flag; either mismatch is refused identically to an unknown resource. An Environment never configured for this flag compares as its zero-value configuration (disabled, no default variation, no rules) rather than erroring, per flag-change-history's "Two environments are compared" scenario.
+         */
+        get: operations["compareFlagChangeHistoryEnvironments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/feature-flags/{feature_flag_id}/environment-flag-configs/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote a flag's configuration from one environment to another
+         * @description Requires a session for a Member holding environment-flag-configs:manage. Copies the flag's live configuration from source_environment_id to target_environment_id in a single operation, subject to the target's approval policy, per project-environment-management's "Configuration Can Be Promoted Between Environments" requirement. The caller is expected to have already called the compare endpoint to show the difference before calling this to confirm it. Records a flag.promoted audit event and a new HistoryPoint in the target's history identifying the source environment. A source with no configuration, or a source/target that does not belong to the caller's Organization and the feature flag's Project, is refused as not found.
+         */
+        post: operations["promoteFlagChangeHistoryConfiguration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/environment-flag-configs/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Side-by-side comparison of every flag across two environments
+         * @description Requires a session for a Member holding environment-flag-configs:manage. Lists every FeatureFlag in the project configured in at least one of the two environments, showing what differs, stating explicitly when they match, and naming flags present in only one environment — per project- environment-management's side-by-side environment comparison requirement. A FeatureFlag never configured in either environment is omitted.
+         */
+        get: operations["compareEnvironmentFlagSets"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1275,7 +1529,7 @@ export interface paths {
         };
         /**
          * List credentials issued for an environment
-         * @description Requires a session for a Member holding credentials:manage. Each entry is metadata only: the plaintext secret and its hash are never included, per the spec's "Listing credentials never exposes the secret" requirement. An environment outside the caller's own Organization is rejected identically to an unknown one.
+         * @description Requires a session for a Member holding credentials:manage. Each entry is metadata only: the plaintext secret and its hash are never included, per the spec's "Listing credentials never exposes the secret" requirement. Entries carry the credential's name, its expiry when it has one, and the instant it was last used (absent when it has never been used). An environment outside the caller's own Organization is rejected identically to an unknown one.
          */
         get: operations["listCredentials"];
         put?: never;
@@ -1284,6 +1538,26 @@ export interface paths {
          * @description Requires a session for a Member holding credentials:manage. The response is the ONLY place the plaintext token is ever returned — it cannot be retrieved again afterward. An environment outside the caller's own Organization is rejected identically to an unknown one.
          */
         post: operations["issueCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/credentials/{credential_id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate a credential, keeping the previous secret valid briefly
+         * @description Requires a session for a Member holding credentials:manage. Issues a replacement secret for the same credential — its identity, scope and environment are unchanged — and keeps the previous secret working for a bounded grace window, so an integration can be moved over without downtime. The replacement token is disclosed in this response and never again. A credential belonging to another Organization is rejected identically to an unknown one.
+         */
+        post: operations["rotateCredential"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1403,7 +1677,7 @@ export interface paths {
         };
         /**
          * Fetch the caller's Environment published flag configuration
-         * @description Credential-authenticated endpoint (Bearer token, requires the config:read scope). Unlike every other endpoint in this document, this one IS authenticated from day one: it is the first endpoint a Service Credential (rather than a human/operator) calls. Returns every FeatureFlag owned by the Credential's own Project, configured for the Credential's own Environment, plus the current Configuration Version. A Credential can never retrieve another Environment's configuration: the query scope comes solely from the resolved Credential, never from a request parameter.
+         * @description Credential-authenticated endpoint (Bearer token, requires the config:read scope). Unlike every other endpoint in this document, this one IS authenticated from day one: it is the first endpoint a Service Credential (rather than a human/operator) calls. Returns every FeatureFlag owned by the Credential's own Project, configured for the Credential's own Environment, plus the current Configuration Version. A Credential can never retrieve another Environment's configuration: the query scope comes solely from the resolved Credential, never from a request parameter. Supports a conditional GET: the response carries an ETag derived from version; presenting that value via If-None-Match on a later request gets 304 Not Modified with no body if nothing changed. See poll_interval_seconds on the response for the advised polling interval.
          */
         get: operations["getConfiguration"];
         put?: never;
@@ -1514,6 +1788,34 @@ export interface paths {
         get: operations["getMetricDefinition"];
         put?: never;
         post?: never;
+        /**
+         * Delete a metric definition
+         * @description Requires a session for a Member holding metrics:manage. Deletion is permanent and distinct from archive, which remains the reversible option. Refused with metric_definition_has_dependents, naming every one, when a Guardrail or Connector still references the definition.
+         */
+        delete: operations["deleteMetricDefinition"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename and/or redescribe a metric definition
+         * @description Requires a session for a Member holding metrics:manage. Updates the definition's name and description. Its key is immutable after creation.
+         */
+        patch: operations["renameMetricDefinition"];
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/metric-definitions/{metric_definition_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a metric definition
+         * @description Requires a session for a Member holding metrics:manage. Archiving stops the definition being offered for new use, but every existing Guardrail, Connector or Observation referencing it continues to resolve. Nothing is deleted.
+         */
+        post: operations["archiveMetricDefinition"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1764,6 +2066,8 @@ export interface paths {
         /**
          * Start an OIDC login for an Organization
          * @description Redirects the browser to the Organization's configured identity provider, embedding a fresh state and nonce tracked as a LoginAttempt.
+         *
+         *     The response also issues a short-lived, `HttpOnly` browser-binding cookie scoped to `/v1/auth/callback`. The callback requires it, so a client that completes the flow must carry cookies through the redirect chain; a callback presented without the matching value is refused before any authorization code is exchanged.
          */
         get: operations["initiateLogin"];
         put?: never;
@@ -1784,6 +2088,8 @@ export interface paths {
         /**
          * Complete an OIDC login
          * @description Verifies the callback's state, nonce and ID token signature against its tracked LoginAttempt, resolves or just-in-time provisions the authenticated Member, and issues a Session.
+         *
+         *     The `growth_ops_login_binding` cookie issued when the login was started is REQUIRED and is verified before the authorization code is exchanged: a callback presented by any other user agent — or with no such cookie — is refused with 401 and establishes no session. The cookie is single-use and is cleared by this response either way.
          *
          *     The response shape is negotiated by the request's Accept header. A request preferring `text/html` — that is, a browser — receives the session as an `HttpOnly`, `SameSite=Lax` cookie (`Secure` outside development) and a 302 redirect to the configured web app; the token never appears in the redirect target or the body. Every other caller, including one sending no Accept header at all, receives the 200 JSON response below.
          *
@@ -1856,6 +2162,200 @@ export interface paths {
          *     Session delivery follows the same Accept-header negotiation as `/v1/auth/callback`: a browser gets an `HttpOnly`, `SameSite=Lax` cookie plus a 302 redirect to the web app; every other caller gets the plaintext token once in the 200 JSON body. No failure path sets a session cookie.
          */
         post: operations["confirmMagicLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/magic-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request a platform-staff magic-link login email
+         * @description Emails a single-use, 15-minute login link to an existing, active StaffMember's address. It never creates a StaffMember: an email matching no StaffMember — or matching a disabled one — is a silent no-op.
+         *
+         *     The response is deliberately identical in every case, so this endpoint cannot be used to enumerate platform staff. Rate-limited both per client IP and, independently, per recipient email address.
+         *
+         *     A StaffMember is NOT scoped to any Organization and is a distinct identity from a Member, even when the same address also holds a Member account somewhere. This endpoint therefore has nothing to do with `/v1/auth/magic-link`, and the two issue different, mutually unusable credentials.
+         */
+        post: operations["requestStaffMagicLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/magic-link/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether a staff magic-link token is still valid
+         * @description Read-only: reports whether token exists, is unexpired and unused, WITHOUT consuming it or creating a StaffSession. Safe to call repeatedly, including by an automated corporate email-security link scanner that prefetches the emailed link before a human clicks it.
+         *
+         *     It reports validity only, and never names the StaffMember the token belongs to: a leaked link must not disclose who a staff user is.
+         */
+        get: operations["peekStaffMagicLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/magic-link/{token}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Consume a staff magic-link token and issue a StaffSession
+         * @description Atomically consumes token — succeeding only once, even under concurrent attempts — and issues a StaffSession for the StaffMember it resolves to. Rejected if the token is unknown, expired, already used, or resolves to a disabled StaffMember.
+         *
+         *     A browser (an Accept value preferring `text/html`) gets an `HttpOnly`, `SameSite=Lax` cookie named `rf_staff_session` plus a 302 redirect; every other caller gets the plaintext token once in the 200 JSON body. The cookie name is deliberately different from the Member session cookie's, so the two credentials can coexist on one host without either being mistaken for the other. No failure path sets a cookie.
+         */
+        post: operations["confirmStaffMagicLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the signed-in platform-staff identity
+         * @description Returns the StaffMember behind the presented StaffSession and the staff permissions they hold. It requires a valid StaffSession but no particular permission: reading your own identity must work for a StaffMember holding no grant at all.
+         *
+         *     The credential is read from `Authorization: Bearer <token>` or, for a browser, from the `rf_staff_session` cookie. A Member session token or the Member session cookie never satisfies it.
+         *
+         *     The response carries no Organization (a StaffMember has none) and no token or hash field, so it cannot leak the credential it is looked up by.
+         */
+        get: operations["currentStaffSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/session/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End the presented staff session
+         * @description Marks the presented StaffSession revoked server-side and clears the `rf_staff_session` cookie. Revocation is the point: a copy of the cookie taken before logout stops being accepted on the very next request, which clearing the cookie alone would not achieve.
+         *
+         *     The credential is read from `Authorization: Bearer <token>` or, for a browser, from the `rf_staff_session` cookie. The cookie is cleared on every path that reaches a decision about the token, rejection included, so a browser holding a token the API refuses is not left bouncing between "cookie present" and "unauthorized".
+         *
+         *     A request authenticated by the cookie rather than a bearer header must also carry an `Origin` header on the staff write allow-list; one that does not is answered `403 staff_origin_rejected`.
+         */
+        post: operations["staffLogout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/sessions/{staff_session_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke a named staff session
+         * @description Revokes a StaffSession believed to be compromised, without waiting for its absolute expiry. Every later request presenting it is refused.
+         *
+         *     Requires a valid StaffSession, and revokes only a session belonging to the same StaffMember: a session id that does not exist and one belonging to another StaffMember are both answered `404` with the same body, so this route cannot be used to enumerate other staff members' sessions. Killing another StaffMember's session stays an out-of-band operation, like every other StaffMember administration action.
+         *
+         *     Revoking an already revoked session succeeds: the caller's intent is already true.
+         *
+         *     A request authenticated by the cookie rather than a bearer header must also carry an `Origin` header on the staff write allow-list.
+         */
+        post: operations["revokeStaffSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/organizations/{organization_id}/charges/{charge_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a one-off charge's refund status
+         * @description Returns an Organization's one-off charge with its amount, the amount refunded so far, and the remaining refundable balance — the numbers a staff operator needs before issuing a further refund, answered from the platform's own records without a gateway lookup.
+         *
+         *     Requires a StaffSession holding `billing:refund`. A Member session never satisfies it, no matter which Organization-scoped permissions that Member holds: platform staff and an Organization's own members are separate identity systems.
+         *
+         *     The charge must belong to the Organization named in the path. A charge that does not exist and one that exists under a different Organization are both answered `404` with the same body, so a mismatched pair cannot be used to probe which charges exist.
+         *
+         *     `refunded_amount` reflects only refunds the payment gateway has confirmed by webhook, so it can briefly lag a refund requested moments ago — whether through this API or in the gateway's own dashboard.
+         */
+        get: operations["getStaffChargeRefundStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/organizations/{organization_id}/charges/{charge_id}/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request a refund of a one-off charge
+         * @description Asks the payment gateway to refund `amount` of an Organization's one-off charge, on behalf of platform staff, and records a `charge.refund_requested` audit event attributed to the requesting StaffMember.
+         *
+         *     Requires a StaffSession holding `billing:refund` — deliberately not `billing:manage`, since an Organization refunding itself is not the intended control. The charge must belong to the Organization named in the path, exactly as for the read above.
+         *
+         *     The response is `202`, not `200`: the gateway has accepted the request, but the charge's `refunded_amount` deliberately does not move until the gateway confirms the refund through its own webhook. The charge returned here therefore still shows the totals as they were, and a subsequent read reflects the refund once that confirmation lands. This mirrors the separation between creating a charge and confirming its payment.
+         *
+         *     `amount` is validated against the charge's remaining refundable balance before the gateway is contacted. That check reads local state which can be stale relative to the gateway, so it is a fast rejection for the common case rather than the final word: the gateway enforces the real limit against its own records regardless.
+         */
+        post: operations["issueStaffChargeRefund"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1939,7 +2439,7 @@ export interface paths {
         };
         /**
          * Export the Organization's audit trail
-         * @description Requires a session for a Member holding audit:read. Returns the same Organization-scoped, filtered set of AuditEvents as GET /v1/audit-events — honoring the same event_type, subject_type, subject_id and occurred-at filters — but as a single downloadable document without the listing's pagination limit. The format query parameter selects csv (the default) or json. In CSV, the payload column holds the event's JSON document as a quoted field, which consumers must parse as JSON.
+         * @description Requires a session for a Member holding audit:read. Returns the same Organization-scoped, filtered set of AuditEvents as GET /v1/audit-events — honoring the same event_type, subject_type, subject_id and occurred-at filters — but as a single downloadable document without the listing's pagination limit. The format query parameter selects csv (the default) or json. In CSV, the payload column holds the event's JSON document as a quoted field, which consumers must parse as JSON, and the actor_type/actor_id columns are both empty for an event recorded without an actor.
          */
         get: operations["exportAuditEvents"];
         put?: never;
@@ -2206,6 +2706,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{organization_id}/billing/payment-method": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the organization's saved payment method
+         * @description Requires a session for a Member holding billing:manage. Returns enough of the saved instrument to recognize it — brand, last four digits and expiry — and never a full instrument number, a fingerprint, or the gateway's own payment method id. The instrument is resolved from the caller's own Organization's subscription; the caller never names a payment method. An Organization with nothing on record is not an error: `present` is false and `payment_method` is omitted.
+         */
+        get: operations["getOrganizationPaymentMethod"];
+        /**
+         * Replace the organization's saved payment method
+         * @description Requires a session for a Member holding billing:manage. `payment_method_id` names an instrument the browser has already collected and verified directly against the payment gateway (a confirmed setup intent on this Organization's gateway customer) — no card data ever reaches this API. The new instrument becomes the one the gateway bills the subscription against and the one future one-off charges are raised against. The response is the saved method's summary, so the caller confirms the replacement by what is now on file.
+         */
+        put: operations["replaceOrganizationPaymentMethod"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{organization_id}/billing/charges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the organization's charges
+         * @description Requires a session for a Member holding billing:manage. Returns the caller's own Organization's charges, newest first, with the gateway-hosted invoice and receipt URLs the payment provider published for each. A charge the provider published no such document for omits the field entirely rather than returning an empty string. The list is capped; `has_more` reports that older charges were withheld.
+         */
+        get: operations["listOrganizationCharges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{organization_id}/billing/charges/{charge_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one of the organization's charges
+         * @description Requires a session for a Member holding billing:manage. A charge belonging to another Organization is rejected identically to one that does not exist, so a caller cannot learn which of the two it was.
+         */
+        get: operations["getOrganizationCharge"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{organization_id}/billing/subscription-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the organization's subscription status
+         * @description Requires a session, and deliberately NOT billing:manage — the only Organization-scoped billing read that does not. The console shell tells every member of a suspended Organization that its published configuration is no longer being served, so a member without billing:manage must be able to learn that much. Widening the audience is paid for by narrowing the disclosure: the response carries the subscription's status and nothing else. An `organization_id` other than the caller's own is rejected identically to an unknown one. `status` is omitted for an Organization with no subscription.
+         */
+        get: operations["getOrganizationSubscriptionStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/billing/plans": {
         parameters: {
             query?: never;
@@ -2218,6 +2802,342 @@ export interface paths {
          * @description Returns every PlanDefinition's current PlanVersion, its entitlement grants and every associated price. The catalog is platform-wide, not Organization-scoped — it is identical for every prospective subscriber and discloses nothing about any Organization — so it requires only a valid session, with no billing:manage check. One exception narrows presentation only: when the session's own organization holds a pricing-experiment assignment for a plan and has no subscription to that plan yet, that plan lists only the assigned price. The organization is always taken from the session, never from the request.
          */
         get: operations["listBillingPlans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/billing/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the published plan catalog without a session
+         * @description Deliberately UNAUTHENTICATED. Returns every published PlanDefinition's current PlanVersion, its included allowances, and every price attached to that version with its billing interval and overage rates. The public pricing page renders from this endpoint, so a visitor with no account is shown the price the checkout will actually charge.
+         *
+         *     The catalog is platform-wide and discloses nothing about any Organization: the response carries no Organization-scoped field, and it is byte-identical whether or not a caller presents a session. Because there is no session to bound it, the endpoint is rate limited per client IP with the same budget every other unauthenticated endpoint uses (5 requests/second, burst 10).
+         *
+         *     This is NOT the same operation as GET /v1/billing/plans. That one requires a session and narrows the prices it presents to the reading Organization (its pricing-experiment assignment, or the plan's default price per interval). This one has no Organization to narrow by, so it lists every published price and marks the plan's own price for each interval with is_default.
+         */
+        get: operations["listPublicBillingPlans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's Organization's feedback and tickets
+         * @description Requires a valid Member session. Returns both kind "feedback" and kind "ticket" entries for the session's own Organization, newest first. A feedback entry's status is never included.
+         */
+        get: operations["listSupportTickets"];
+        put?: never;
+        /**
+         * Submit feedback or open a formal support ticket
+         * @description Requires a valid Member session; no additional RBAC permission — any Member of an Organization may submit feedback or a ticket for that Organization. organization_id and member_id are always taken from the resolved session, never from the request body. Rate limited per Member (429 on excess). kind "feedback" starts with no visible status and accepts no category; kind "ticket" requires subject, description and category, and starts at status "open".
+         */
+        post: operations["createSupportTicket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/tickets/{support_ticket_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one feedback entry or support ticket by ID
+         * @description Requires a valid Member session. A ticket belonging to another Organization is rejected identically to an unknown one.
+         */
+        get: operations["getSupportTicket"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/tickets/{support_ticket_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a ticket's bidirectional message thread
+         * @description Requires a valid Member session for a ticket belonging to the caller's own Organization; rejected identically to an unknown ticket id otherwise. Messages are ordered oldest first.
+         */
+        get: operations["listSupportMessages"];
+        put?: never;
+        /**
+         * Reply on a ticket's thread
+         * @description Requires a valid Member session for a ticket belonging to the caller's own Organization; rejected identically to an unknown ticket id otherwise. Rate limited per Member (429 on excess). A Member reply on a "resolved" ticket reopens it to "open" as part of the same write, per support-tickets' auto-reopen rule; the response's status field reflects the ticket's status after that rule is applied.
+         */
+        post: operations["addSupportMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/tickets/{support_ticket_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a ticket's own initial-submission attachments
+         * @description Requires a valid Member session. Lists attachments owned directly by the ticket (its opening submission's attachments) — a reply's attachments are listed separately, via GET /v1/support/messages/{support_message_id}/attachments. The owning ticket must belong to the caller's own Organization, rejected identically to an unknown id otherwise.
+         */
+        get: operations["listSupportTicketAttachments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/messages/{support_message_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a reply's attachments
+         * @description Requires a valid Member session. The owning ticket must belong to the caller's own Organization, rejected identically to an unknown id otherwise.
+         */
+        get: operations["listSupportMessageAttachments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/attachments/presign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Presign a direct-to-storage upload for a ticket/feedback attachment
+         * @description Requires a valid Member session. Exactly one of ticket_id or message_id must be set — an attachment on the original submission targets the ticket directly, one added on a later reply targets that reply's message. Either way, the owning ticket must belong to the caller's own Organization, rejected identically to an unknown id otherwise. Accepts only image/jpeg and image/png, and at most 10 attachments per ticket/message; the COMBINED declared size of every attachment on that ticket/message (this one plus whatever is already persisted against it) must not exceed 20MB — not 20MB per file. The object key is namespaced by organization_id and a server-generated id, never derived from client input. Does not itself persist an attachment — see POST .../attachments/{id}/confirm.
+         */
+        post: operations["presignSupportAttachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/attachments/{support_attachment_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm an uploaded attachment after the client's direct PUT
+         * @description Requires a valid Member session. Called after the client has PUT the object's bytes to the URL returned by the presign endpoint. The upload recorded at presign time is resolved first: an attachment_id that was never issued, was issued to another Organization, or was already confirmed is refused with the same 404 in every case, before any storage object is read or deleted. The object key is then derived from that record — the request body carries no object key, and one sent anyway is rejected as an unknown field. Fetches the object back and validates its actual content — JPG/JPEG/PNG only, inspected from the real bytes, never only the client-declared content type or extension — deleting the object at the derived key and rejecting the confirmation on a mismatch, oversized object, or limit already reached at confirmation time. Only on success is a SupportAttachment persisted.
+         */
+        post: operations["confirmSupportAttachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/attachments/{support_attachment_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a time-limited download URL for an attachment
+         * @description Requires a valid Member session. Scoped identically to the attachment's owning ticket (directly, or via the owning ticket of a message-scoped attachment) — an attachment belonging to another Organization is rejected identically to an unknown one.
+         */
+        get: operations["downloadSupportAttachment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/support/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List feedback and tickets across every Organization
+         * @description Requires a StaffSession holding `support:view`. Unlike the Member-facing listing, this spans every Organization — a StaffMember is not scoped to one, per platform-staff-access. A Member session never satisfies this, no matter which Organization-scoped permissions it holds.
+         */
+        get: operations["listStaffSupportTickets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/support/tickets/{support_ticket_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one feedback entry or support ticket, across every Organization
+         * @description Requires a StaffSession holding `support:view`. No Organization scoping is applied — see the listing endpoint's description.
+         */
+        get: operations["getStaffSupportTicket"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/support/tickets/{support_ticket_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a ticket's bidirectional message thread as staff
+         * @description Requires a StaffSession holding `support:view`. No Organization scoping — spans every Organization, per staff-support-console's cross-Organization visibility.
+         */
+        get: operations["listStaffSupportMessages"];
+        put?: never;
+        /**
+         * Reply on a ticket's thread as staff
+         * @description Requires a StaffSession holding `support:respond`. A reply on an `open` ticket moves it to `answered`; a reply on a `resolved` ticket does not reopen it — only a Member's own reply does.
+         */
+        post: operations["addStaffSupportMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/support/tickets/{support_ticket_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve a formal support ticket
+         * @description Requires a StaffSession holding `support:close`. Rejected for a `feedback` entry (no status lifecycle applies) and for a ticket already `resolved`.
+         */
+        post: operations["closeStaffSupportTicket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/support/attachments/{support_attachment_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a time-limited download URL for an attachment, as staff
+         * @description Requires a StaffSession holding `support:view`. No Organization scoping is applied, matching the ticket listing/read endpoints above.
+         */
+        get: operations["downloadStaffSupportAttachment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/support/tickets/{support_ticket_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a ticket's own initial-submission attachments, as staff
+         * @description Requires a StaffSession holding `support:view`. No Organization scoping is applied, matching the ticket listing/read endpoints above.
+         */
+        get: operations["listStaffSupportTicketAttachments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/support/messages/{support_message_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a reply's attachments, as staff
+         * @description Requires a StaffSession holding `support:view`. No Organization scoping is applied, matching the ticket listing/read endpoints above.
+         */
+        get: operations["listStaffSupportMessageAttachments"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2244,8 +3164,19 @@ export interface components {
             payload: {
                 [key: string]: unknown;
             };
+            /** @description Who or what triggered the recorded mutation. Omitted entirely for an event recorded before actor attribution existed, or by a module that has not adopted it — an absent actor is never defaulted to a specific value. */
+            actor?: components["schemas"]["AuditEventActor"];
             /** Format: date-time */
             created_at: string;
+        };
+        AuditEventActor: {
+            /**
+             * @description member is an authenticated Member acting through a self-serve surface, staff is a platform StaffMember acting across Organizations through a staff-only surface (e.g. issuing a refund), system is the platform's own scheduled processing (e.g. renewal), and gateway is an inbound payment-gateway webhook.
+             * @enum {string}
+             */
+            type: "member" | "staff" | "system" | "gateway";
+            /** @description The acting Member's or StaffMember's id. Present only for a member or staff actor; a system or gateway actor carries none. */
+            id?: string;
         };
         AuditEventList: {
             audit_events: components["schemas"]["AuditEvent"][];
@@ -2253,6 +3184,8 @@ export interface components {
             limit: number;
             /** @description The pagination offset actually applied. */
             offset: number;
+            /** @description Whether at least one further audit event exists beyond this page. Always false for an unbounded export request, since nothing was capped. A response never presents a subset as if it were the whole. */
+            has_more: boolean;
         };
         ListProjectsResponse: {
             projects: components["schemas"]["Project"][];
@@ -2267,6 +3200,8 @@ export interface components {
             limit: number;
             /** @description The pagination offset actually applied. */
             offset: number;
+            /** @description Whether at least one further feature flag exists beyond this page. A response never presents a subset as if it were the whole. */
+            has_more: boolean;
         };
         ListEnvironmentsResponse: {
             environments: components["schemas"]["Environment"][];
@@ -2422,6 +3357,9 @@ export interface components {
             name: string;
             slug: string;
         };
+        RenameProjectRequest: {
+            name: string;
+        };
         Project: {
             id: string;
             organization_id: string;
@@ -2436,11 +3374,41 @@ export interface components {
             name: string;
             slug: string;
         };
+        RenameEnvironmentRequest: {
+            name: string;
+        };
+        SetEnvironmentProductionRequest: {
+            is_production: boolean;
+        };
+        SetEnvironmentApprovalPolicyRequest: {
+            requires_approval: boolean;
+            disable_exempt_from_approval: boolean;
+        };
+        CloneEnvironmentRequest: {
+            name: string;
+            slug: string;
+        };
+        CopyFailure: {
+            feature_flag_id: string;
+            reason: string;
+        };
+        CloneEnvironmentResponse: {
+            environment: components["schemas"]["Environment"];
+            copied_feature_flag_ids: string[];
+            /** @description Every FeatureFlag whose configuration could not be copied, named explicitly rather than failing the clone silently. */
+            skipped: components["schemas"]["CopyFailure"][];
+        };
         Environment: {
             id: string;
             project_id: string;
             name: string;
             slug: string;
+            /** @description Whether this environment is marked as production. Explicit, operator-set state, never inferred from name or slug — surfaces that require proportional confirmation before a destructive or high-impact action (e.g. the kill switch) read this field. */
+            is_production: boolean;
+            /** @description Whether a manual EnvironmentFlagConfig write to this environment is refused pending approval. */
+            requires_approval: boolean;
+            /** @description Whether the distinct kill-switch (disable) operation bypasses requires_approval. Only meaningful when requires_approval is true; defaults to true so a newly-gated environment never silently blocks its own kill switch. */
+            disable_exempt_from_approval: boolean;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2452,8 +3420,18 @@ export interface components {
         };
         CreateFeatureFlagRequest: {
             name: string;
+            description?: string;
             key: string;
             variations: components["schemas"]["VariationInput"][];
+            tags?: string[];
+        };
+        RenameFeatureFlagRequest: {
+            name: string;
+            description?: string;
+            /** @description Optional. A feature flag's key is immutable after creation: if supplied, it MUST equal the flag's current key, or the request is refused with feature_flag_key_immutable. Omit this field entirely on a routine rename. */
+            key?: string;
+            /** @description Optional. When present, replaces the flag's tags wholesale. Omit this field entirely to leave existing tags untouched. */
+            tags?: string[];
         };
         Variation: {
             id: string;
@@ -2464,8 +3442,10 @@ export interface components {
             id: string;
             project_id: string;
             name: string;
+            description: string;
             key: string;
             variations: components["schemas"]["Variation"][];
+            tags: string[];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2520,6 +3500,69 @@ export interface components {
             environment_id: string;
             environment_name: string;
             enabled: boolean;
+        };
+        HistoryPointActor: {
+            /** @enum {string} */
+            type: "member" | "staff" | "system" | "gateway";
+            /** @description Present only for a member or staff actor. */
+            id?: string;
+        };
+        HistoryPoint: {
+            id: string;
+            environment_id: string;
+            feature_flag_id: string;
+            environment_flag_config_id: string;
+            /** @description The resulting configuration's targeting-model snapshot, the same shape as EnvironmentFlagConfig's own enabled/ default_variation_id/rules fields. */
+            configuration: Record<string, never>;
+            actor?: components["schemas"]["HistoryPointActor"];
+            /** @description Present only when this point is the result of a restore: the id of the history point it restored. */
+            restored_from_point_id?: string;
+            /** @description Present only when this point is the result of a promotion: the id of the source environment. */
+            promoted_from_environment_id?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ConfigurationSnapshot: {
+            enabled: boolean;
+            default_variation_id: string;
+            rules: components["schemas"]["Rule"][];
+        };
+        HistoryPointList: {
+            points: components["schemas"]["HistoryPoint"][];
+            /** @description True when more history points exist beyond this page. */
+            has_more: boolean;
+        };
+        FieldChange: {
+            /** @enum {string} */
+            field: "enabled" | "default_variation_id";
+            before: unknown;
+            after: unknown;
+        };
+        RuleDifference: {
+            position: number;
+            /**
+             * @description "before_only"/"after_only" means the rule at this position exists on only one side, per flag-change-history's "A construct is present on one side only" scenario.
+             * @enum {string}
+             */
+            presence: "both" | "before_only" | "after_only";
+            before?: components["schemas"]["Rule"];
+            after?: components["schemas"]["Rule"];
+        };
+        Difference: {
+            /** @description True when the two compared configurations are identical. Explicit rather than inferred from empty fields/rules arrays, per flag-change-history's "The configurations are identical" scenario. */
+            identical: boolean;
+            fields: components["schemas"]["FieldChange"][];
+            rules: components["schemas"]["RuleDifference"][];
+        };
+        FlagComparison: {
+            feature_flag_id: string;
+            feature_flag_key: string;
+            /**
+             * @description "before_only"/"after_only" means the flag is configured in only one of the two compared environments.
+             * @enum {string}
+             */
+            presence: "both" | "before_only" | "after_only";
+            difference: components["schemas"]["Difference"];
         };
         RolloutStageRequest: {
             target_percentage: number;
@@ -2718,6 +3761,7 @@ export interface components {
             template_id: string;
             /** @description Optional. Pins the Connector to a specific, approved version of template_id. Omitted resolves to template_id's highest currently approved version at creation time. Immutable after creation except via an explicit later edit — see UpdateConnectorRequest. */
             template_version?: number;
+            /** @description Must be an https URL. It is parsed and its scheme is checked, so a value that merely begins with "https" but is not a valid https URL is refused. The pull secret is presented to this URL as a bearer credential on every sync, so a plaintext destination is never accepted. */
             source_url: string;
             secret: string;
             metric_definition_id: string;
@@ -2729,6 +3773,7 @@ export interface components {
             template_id?: string;
             /** @description Optional. Only consulted when template_id is also supplied; omitted then resolves to template_id's highest currently approved version. */
             template_version?: number;
+            /** @description Must be an https URL, checked the same way CreateConnectorRequest.source_url is. */
             source_url: string;
             metric_definition_id: string;
             environment_id: string;
@@ -2736,6 +3781,7 @@ export interface components {
             secret?: string;
         };
         PreviewMappingRequest: {
+            /** @description Must be an https URL, checked the same way CreateConnectorRequest.source_url is. */
             source_url: string;
             /** @description Optional. Sent as a Bearer token to source_url, same as a Connector's own pull secret. */
             secret?: string;
@@ -2787,10 +3833,10 @@ export interface components {
             /** @description Absent on success or when this Connector has never been synced. */
             last_sync_error?: string;
             /**
-             * @description Absent on success or when this Connector has never been synced. Only mapping_mismatch counts toward the automatic circuit breaker that transitions status to broken.
+             * @description Absent on success or when this Connector has never been synced. Only mapping_mismatch counts toward the automatic circuit breaker that transitions status to broken. insecure_destination means this Connector's source_url is not an https URL: it was configured before that was required, and no sync will present the pull secret to it until the source_url is corrected.
              * @enum {string}
              */
-            last_sync_failure_kind?: "unreachable" | "timeout" | "non_2xx" | "oversized" | "mapping_mismatch" | "internal_error";
+            last_sync_failure_kind?: "unreachable" | "timeout" | "non_2xx" | "oversized" | "mapping_mismatch" | "insecure_destination" | "internal_error";
             /** @description Absent when this Connector has never synced successfully. */
             last_sync_observation_count?: number;
             /** @description Consecutive mapping_mismatch failures. Resets to zero on a successful sync; a transient failure leaves it unchanged. Reaching 3 transitions status to broken. */
@@ -2827,10 +3873,10 @@ export interface components {
             /** @description Absent on success or when this Connector has never been synced. */
             last_sync_error?: string;
             /**
-             * @description Absent on success or when this Connector has never been synced. Only mapping_mismatch counts toward the automatic circuit breaker that transitions status to broken.
+             * @description Absent on success or when this Connector has never been synced. Only mapping_mismatch counts toward the automatic circuit breaker that transitions status to broken. insecure_destination means this Connector's source_url is not an https URL: it was configured before that was required, and no sync will present the pull secret to it until the source_url is corrected.
              * @enum {string}
              */
-            last_sync_failure_kind?: "unreachable" | "timeout" | "non_2xx" | "oversized" | "mapping_mismatch" | "internal_error";
+            last_sync_failure_kind?: "unreachable" | "timeout" | "non_2xx" | "oversized" | "mapping_mismatch" | "insecure_destination" | "internal_error";
             /** @description Absent when this Connector has never synced successfully. */
             last_sync_observation_count?: number;
             /** @description Consecutive mapping_mismatch failures. Resets to zero on a successful sync; a transient failure leaves it unchanged. Reaching 3 transitions status to broken. */
@@ -2975,6 +4021,13 @@ export interface components {
             scopes: ("config:read" | "metrics:write" | "acquisition:write" | "identity:write")[];
             /** @description Issue this credential as safe to embed in browser-visible code. MUST be restricted to exactly the config:read scope — issuing a Public credential with any other scope is rejected. Defaults to false. */
             public?: boolean;
+            /** @description Optional human-readable label, so an operator can tell two credentials apart in the listing. Omitted means unnamed. */
+            name?: string;
+            /**
+             * Format: date-time
+             * @description Optional instant at which this credential stops authenticating requests. Omitted means it never expires. An expired credential is refused exactly like an unknown one.
+             */
+            expires_at?: string;
         };
         Credential: {
             id: string;
@@ -2990,6 +4043,13 @@ export interface components {
             token: string;
             /** Format: date-time */
             created_at: string;
+            /** @description The human-readable label supplied at issue time. Absent when the credential is unnamed. */
+            name?: string;
+            /**
+             * Format: date-time
+             * @description The instant this credential stops authenticating requests. Absent when it never expires.
+             */
+            expires_at?: string;
         };
         ConfigureIdentityProviderRequest: {
             issuer: string;
@@ -3075,6 +4135,82 @@ export interface components {
         };
         PeekMagicLinkResponse: {
             valid: boolean;
+        };
+        RequestStaffMagicLinkRequest: {
+            /** Format: email */
+            email: string;
+        };
+        /** @description Deliberately identical whether or not the email matched an active StaffMember — see requestStaffMagicLink's description. */
+        RequestStaffMagicLinkResponse: {
+            message: string;
+        };
+        /** @description Reports validity only. It never names the StaffMember the token belongs to. */
+        PeekStaffMagicLinkResponse: {
+            valid: boolean;
+        };
+        /** @description A platform-staff identity. It has no organization field by design: a StaffMember acts across every Organization and is a distinct identity from a Member, even when the same email also holds a Member account somewhere. It carries no token or hash field either, so no staff endpoint can leak credential material. */
+        StaffMember: {
+            id: string;
+            /** Format: email */
+            email: string;
+            name: string;
+            /** @enum {string} */
+            status: "active" | "disabled";
+            /** @description The staff permissions this StaffMember was granted, drawn from a small fixed catalog. Read-only here: granting and revoking are out-of-band operations with no API surface. */
+            permissions: ("billing:refund" | "support:view" | "support:respond" | "support:close")[];
+        };
+        /** @description The only place the plaintext StaffSession token is ever returned; only its one-way hash is persisted. */
+        ConfirmStaffMagicLinkResponse: {
+            staff_member: components["schemas"]["StaffMember"];
+            session_token: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        /** @description The staff identity behind a presented StaffSession. It has no session-token field by design, so the endpoint cannot leak the token it is looked up by. */
+        CurrentStaffSessionResponse: {
+            staff_member: components["schemas"]["StaffMember"];
+        };
+        /**
+         * @description A staff-issued refund request against a one-off charge.
+         *
+         *     It carries no currency: a refund is always denominated in the charge's own currency, which the API reads from the charge itself, so a currency mismatch is impossible rather than merely rejected.
+         */
+        IssueRefundRequest: {
+            /**
+             * Format: int64
+             * @description The amount to refund, in the charge's currency's smallest unit (e.g. cents). Must be positive and must not exceed the charge's remaining refundable balance.
+             */
+            amount: number;
+        };
+        /** @description The refund-facing view of a one-off charge. */
+        StaffChargeResponse: {
+            charge: components["schemas"]["StaffCharge"];
+        };
+        /** @description A one-off charge as platform staff see it for refund purposes. Every amount is an integer in currency's smallest unit (e.g. cents), never a float. */
+        StaffCharge: {
+            id: string;
+            organization_id: string;
+            /**
+             * @description The charge's own lifecycle status. A refund never changes it: a fully refunded charge stays `paid`, since a refund is money voluntarily returned, not a payment reversed by the cardholder's bank (which is a dispute, and does move the status to `disputed`). `failed` means the gateway attempted the charge and was declined, as opposed to `expired`, which means an asynchronous method's payment window elapsed with nobody ever attempting to pay it.
+             * @enum {string}
+             */
+            status: "created" | "pending" | "paid" | "expired" | "failed" | "disputed";
+            /**
+             * Format: int64
+             * @description The amount originally charged.
+             */
+            amount: number;
+            currency: string;
+            /**
+             * Format: int64
+             * @description How much of this charge the payment gateway has confirmed as refunded so far, across every refund against it. It moves only on a gateway webhook confirmation, never on a refund request, so it can briefly lag a refund just issued.
+             */
+            refunded_amount: number;
+            /**
+             * Format: int64
+             * @description `amount` minus `refunded_amount` — how much of this charge is still refundable. Returned rather than left to the caller so the two can never be read inconsistently.
+             */
+            remaining_refundable_amount: number;
         };
         /** @description The identity behind a presented session. It has no session-token field by design, so the endpoint cannot leak the token it is looked up by. */
         CurrentSessionResponse: {
@@ -3189,9 +4325,48 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             revoked_at?: string | null;
+            /** @description The human-readable label supplied at issue time. Absent when the credential is unnamed. */
+            name?: string;
+            /**
+             * Format: date-time
+             * @description The instant this credential stops authenticating requests. Absent when it never expires.
+             */
+            expires_at?: string;
+            /**
+             * Format: date-time
+             * @description The instant this credential last authenticated a request. ABSENT means it has never been used — that is how a never-used credential is distinguished from one used at a known instant. Recorded asynchronously, so it may lag a request by seconds.
+             */
+            last_used_at?: string;
+        };
+        /** @description A rotated credential: its unchanged metadata, the replacement token (disclosed here once and never again) and the instant the previous secret stops being accepted. */
+        RotatedCredential: {
+            id: string;
+            organization_id: string;
+            project_id: string;
+            environment_id: string;
+            name?: string;
+            scopes: ("config:read" | "metrics:write" | "acquisition:write" | "identity:write")[];
+            public: boolean;
+            /** @enum {string} */
+            status: "active" | "revoked";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            revoked_at?: string | null;
+            /** Format: date-time */
+            expires_at?: string;
+            /** Format: date-time */
+            last_used_at?: string;
+            /** @description The plaintext replacement token. Returned only in this rotation response; no other response ever includes it. */
+            token: string;
+            /**
+             * Format: date-time
+             * @description The instant the secret being replaced stops being accepted.
+             */
+            previous_secret_expires_at: string;
         };
         CreateWebhookEndpointRequest: {
-            /** @description Must be an http(s) URL. */
+            /** @description Must be an https URL. It is parsed and its scheme is checked, so a value that merely begins with "https" but is not a valid https URL is refused. */
             url: string;
             event_types: ("flag.published" | "rollout.promoted" | "rollout.paused" | "rollout.resumed" | "rollout.rolled_back" | "guardrail.tripped" | "experiment.concluded")[];
         };
@@ -3218,6 +4393,15 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        ListWebhookDeliveriesResponse: {
+            deliveries: components["schemas"]["WebhookDeliveryMetadata"][];
+            /** @description The pagination limit actually applied (default when none supplied). */
+            limit: number;
+            /** @description The pagination offset actually applied. */
+            offset: number;
+            /** @description Whether at least one further delivery exists beyond this page. A response never presents a subset as if it were the whole. */
+            has_more: boolean;
         };
         WebhookDeliveryMetadata: {
             id: string;
@@ -3289,9 +4473,11 @@ export interface components {
         };
         Configuration: {
             environment_id: string;
-            /** @description Monotonically increasing Configuration Version for this Environment. Advances whenever a FeatureFlag, its Variations, or an EnvironmentFlagConfig affecting this Environment is created, updated or removed. */
+            /** @description Monotonically increasing Configuration Version for this Environment. Advances whenever a FeatureFlag, its Variations, or an EnvironmentFlagConfig affecting this Environment is created, updated or removed. Also served as GET /v1/config's ETag response header (quoted, e.g. "v3") — a request carrying that value in If-None-Match gets 304 Not Modified with no body instead of a full Configuration. */
             version: number;
             flags: components["schemas"]["FlagConfig"][];
+            /** @description Advised interval, in seconds, for a client polling GET /v1/config. Paired with the ETag/If-None-Match support above: a client polling at this interval and presenting its last ETag pays only a 304 on most polls. */
+            poll_interval_seconds: number;
         };
         EvaluateRequest: {
             subject_key: string;
@@ -3329,6 +4515,8 @@ export interface components {
         };
         ExposureEventList: {
             exposure_events: components["schemas"]["ExposureEvent"][];
+            /** @description Whether more ExposureEvents exist beyond this page. Set by GET /v1/environments/{environment_id}/feature-flags/{feature_flag_id}/exposure-events; absent from GET /v1/experiments/{experiment_id}/exposure-events. */
+            has_more?: boolean;
         };
         ExposureEventSubmission: {
             flag_key: string;
@@ -3382,19 +4570,30 @@ export interface components {
         };
         CreateMetricDefinitionRequest: {
             name: string;
+            description?: string;
             key: string;
             /** @enum {string} */
             aggregation_type: "count" | "sum" | "average" | "rate";
             unit: string;
         };
+        RenameMetricDefinitionRequest: {
+            name: string;
+            description?: string;
+        };
         MetricDefinition: {
             id: string;
             project_id: string;
             name: string;
+            description: string;
             key: string;
             /** @enum {string} */
             aggregation_type: "count" | "sum" | "average" | "rate";
             unit: string;
+            /**
+             * Format: date-time
+             * @description When the metric definition was archived, or null when it is active. Archiving is a soft state: it stops being offered for new use, but every existing Guardrail, Connector or Observation referencing it continues to resolve.
+             */
+            archived_at: string | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -3429,6 +4628,8 @@ export interface components {
         };
         ObservationList: {
             observations: components["schemas"]["Observation"][];
+            /** @description Whether more Observations exist beyond this page. Set by GET /v1/environments/{environment_id}/metric-definitions/{metric_definition_id}/observations and GET /v1/environments/{environment_id}/observations; absent from GET /v1/experiments/{experiment_id}/observations. */
+            has_more?: boolean;
         };
         RecordAcquisitionContextRequest: {
             subject_key: string;
@@ -3540,6 +4741,85 @@ export interface components {
             /** @description Absent when the Organization has no Subscription — a legitimate state for an Organization whose default-plan enrollment failed or that predates enrollment, not an error. */
             subscription?: components["schemas"]["Subscription"];
         };
+        OrganizationSubscriptionStatus: {
+            organization_id: string;
+            /**
+             * @description Absent when the Organization has no Subscription at all — a legitimate state, not an error.
+             * @enum {string}
+             */
+            status?: "trialing" | "active" | "past_due" | "suspended" | "canceled";
+            /** @description True only for a suspended Subscription. It is the one question the console shell asks, answered here rather than left to every caller to re-derive from `status`. */
+            suspended: boolean;
+        };
+        ReplacePaymentMethodRequest: {
+            /** @description The payment gateway's own id for an instrument already collected and verified by the browser. No card data is ever sent to this API. */
+            payment_method_id: string;
+        };
+        /** @description Identifies a saved instrument without describing it well enough to use. It never carries a full instrument number: `last4` is at most four digits, and there is no other numeric field. */
+        PaymentMethodSummary: {
+            /**
+             * @description The provider's brand label for the instrument (e.g. `visa`), or the method type for an instrument with no brand.
+             * @example visa
+             */
+            brand: string;
+            /**
+             * @description Exactly four digits. Omitted for an instrument with no trailing digits to show.
+             * @example 4242
+             */
+            last4?: string;
+            /**
+             * @description 1-12. Omitted together with exp_year when the instrument has no expiry.
+             * @example 12
+             */
+            exp_month?: number;
+            /** @example 2030 */
+            exp_year?: number;
+        };
+        OrganizationPaymentMethod: {
+            organization_id: string;
+            /** @description False when the Organization has nothing on record — including when the provider no longer holds the instrument it had. A legitimate state the caller renders as an offer to add one, not an error. */
+            present: boolean;
+            /** @description Omitted when `present` is false. */
+            payment_method?: components["schemas"]["PaymentMethodSummary"];
+        };
+        OrganizationCharge: {
+            id: string;
+            organization_id: string;
+            /** @enum {string} */
+            status: "created" | "pending" | "paid" | "failed" | "expired" | "disputed";
+            /**
+             * Format: int64
+             * @description Integer amount in the currency's smallest unit, never a float.
+             */
+            amount: number;
+            /** @example BRL */
+            currency: string;
+            /**
+             * Format: int64
+             * @description The gateway-confirmed refunded total, in the same currency. Zero for a charge nothing has been refunded against.
+             */
+            refunded_amount: number;
+            /**
+             * Format: uri
+             * @description The gateway-hosted invoice for this charge. Omitted — never an empty string — when the gateway published none, so a client renders no link at all rather than a link to nowhere.
+             */
+            hosted_invoice_url?: string;
+            /**
+             * Format: uri
+             * @description The gateway-hosted receipt for this charge, omitted on the same terms as `hosted_invoice_url`.
+             */
+            receipt_url?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        OrganizationChargeList: {
+            charges: components["schemas"]["OrganizationCharge"][];
+            /** @description True when the Organization has older charges than this capped page carries. */
+            has_more: boolean;
+        };
+        OrganizationChargeItem: {
+            charge: components["schemas"]["OrganizationCharge"];
+        };
         PlanCatalogEntry: {
             plan: components["schemas"]["BillingPlan"];
             /** @description Exactly one catalog entry carries this flag: the plan every newly provisioned Organization is enrolled into. */
@@ -3550,6 +4830,54 @@ export interface components {
         };
         PlanCatalog: {
             plans: components["schemas"]["PlanCatalogEntry"][];
+        };
+        PublicOverageRate: {
+            /** @enum {string} */
+            resource_key: "project" | "environment" | "feature_flag" | "segment" | "guardrail" | "experiment" | "webhook_endpoint" | "seat" | "mtu";
+            /**
+             * Format: int64
+             * @description An integer amount in the price's currency's smallest unit (e.g. centavos), charged per per_units units of usage beyond the plan's included allowance for this resource.
+             */
+            amount_per_unit: number;
+            /**
+             * Format: int64
+             * @description The block size amount_per_unit is charged per, e.g. 1000 for "R$1,50 per 1000 MTU". Always at least 1. A partial final block is billed as a whole one.
+             */
+            per_units: number;
+        };
+        PublicBillingPrice: {
+            id: string;
+            /**
+             * Format: int64
+             * @description An integer amount in the smallest unit of currency (e.g. centavos), never a float. May be 0 — the platform's default plan is a zero-amount plan.
+             */
+            amount: number;
+            currency: string;
+            /** @enum {string} */
+            interval: "month" | "year";
+            /** @description True for the plan's own price for this billing interval, false for a simultaneously published variant (e.g. a pricing-experiment cohort's price). A reader with no assignment of its own renders the default. */
+            is_default: boolean;
+            /** @description What usage beyond a metered allowance costs under this price. Empty for a plan version with no metered grant. */
+            overage_rates: components["schemas"]["PublicOverageRate"][];
+        };
+        PublicBillingGrant: {
+            /** @enum {string} */
+            resource_key: "project" | "environment" | "feature_flag" | "segment" | "guardrail" | "experiment" | "webhook_endpoint" | "seat" | "mtu";
+            /** @enum {string} */
+            policy_kind: "unlimited" | "finite" | "metered" | "capped_metered";
+            /** @description The included allowance. Absent only when policy_kind is "unlimited". */
+            policy_limit?: number;
+        };
+        PublicPlanCatalogEntry: {
+            plan: components["schemas"]["BillingPlan"];
+            /** @description Exactly one catalog entry carries this flag: the plan every newly provisioned Organization is enrolled into. */
+            is_default: boolean;
+            grants: components["schemas"]["PublicBillingGrant"][];
+            /** @description Every price published against this plan version, not narrowed to one — there is no reading Organization to narrow by. Use is_default to pick the plan's own price per interval. */
+            prices: components["schemas"]["PublicBillingPrice"][];
+        };
+        PublicPlanCatalog: {
+            plans: components["schemas"]["PublicPlanCatalogEntry"][];
         };
         ChangePlanRequest: {
             plan_version_id: string;
@@ -3562,6 +4890,115 @@ export interface components {
             price_id: string;
             /** @description A payment method verified through a setup intent (see POST .../billing/setup-intent). Always required: checkout always collects a new payment method, even for an organization whose prior Subscription is canceled — it never reuses one. */
             payment_method_id: string;
+        };
+        CreateSupportTicketRequest: {
+            /** @enum {string} */
+            kind: "feedback" | "ticket";
+            /** @description Auto-captured by the console when the Member is viewing a Project-scoped screen; omitted otherwise. */
+            project_id?: string;
+            /** @description Required when kind is "ticket". */
+            subject?: string;
+            description: string;
+            /**
+             * @description Required when kind is "ticket"; must be omitted for "feedback".
+             * @enum {string}
+             */
+            category?: "bug" | "dúvida" | "sugestão" | "outro";
+        };
+        SupportTicket: {
+            id: string;
+            /** @enum {string} */
+            kind: "feedback" | "ticket";
+            project_id?: string;
+            /** @description Present only for kind "ticket". */
+            subject?: string;
+            description: string;
+            /**
+             * @description Present only for kind "ticket".
+             * @enum {string}
+             */
+            category?: "bug" | "dúvida" | "sugestão" | "outro";
+            /**
+             * @description Present only for kind "ticket" — a feedback entry's internal status is never exposed.
+             * @enum {string}
+             */
+            status?: "open" | "answered" | "resolved";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ListSupportTicketsResponse: {
+            support_tickets: components["schemas"]["SupportTicket"][];
+            limit: number;
+            offset: number;
+        };
+        AddSupportMessageRequest: {
+            body: string;
+        };
+        SupportMessage: {
+            id: string;
+            ticket_id: string;
+            /** @enum {string} */
+            author_type: "member" | "staff";
+            author_id: string;
+            body: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ListSupportMessagesResponse: {
+            support_messages: components["schemas"]["SupportMessage"][];
+        };
+        AddSupportMessageResponse: {
+            message: components["schemas"]["SupportMessage"];
+            /**
+             * @description The ticket's status after this message was applied — reflects an auto-reopen when a Member replied on a resolved ticket.
+             * @enum {string}
+             */
+            status: "open" | "answered" | "resolved";
+        };
+        PresignSupportAttachmentRequest: {
+            /** @description Set when the attachment targets a ticket/feedback entry directly. Exactly one of ticket_id/message_id must be set. */
+            ticket_id?: string;
+            /** @description Set when the attachment targets a later reply. Exactly one of ticket_id/message_id must be set. */
+            message_id?: string;
+            /** @enum {string} */
+            content_type: "image/jpeg" | "image/png";
+            /**
+             * Format: int64
+             * @description Declared size; re-validated against the real object at confirm time.
+             */
+            size_bytes: number;
+        };
+        PresignSupportAttachmentResponse: {
+            attachment_id: string;
+            /** @description Server-derived from the Organization, the owning ticket or message and this attachment_id. Informational only: the confirm endpoint derives it again from the recorded upload and accepts no object key of any kind. */
+            object_key: string;
+            /** @description Presigned URL the client PUTs the object's bytes to directly. */
+            upload_url: string;
+        };
+        ConfirmSupportAttachmentRequest: {
+            /** @description Optional. When set it MUST match the owner recorded when the upload was presigned; it is compared, never used to address anything. A value that disagrees is refused as a not-found. */
+            ticket_id?: string;
+            /** @description Optional. Compared against the recorded owner exactly like ticket_id. */
+            message_id?: string;
+        };
+        SupportAttachment: {
+            id: string;
+            ticket_id?: string;
+            message_id?: string;
+            /** @enum {string} */
+            content_type: "image/jpeg" | "image/png";
+            /** Format: int64 */
+            size_bytes: number;
+            /** Format: date-time */
+            created_at: string;
+        };
+        SupportAttachmentDownloadResponse: {
+            download_url: string;
+        };
+        ListSupportAttachmentsResponse: {
+            attachments: components["schemas"]["SupportAttachment"][];
         };
     };
     responses: never;
@@ -4462,6 +5899,135 @@ export interface operations {
             };
         };
     };
+    deleteProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold projects:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Project was not found (or belongs to a different organization). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The project is still referenced by at least one dependent, named in the error message. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "project_has_dependents",
+                     *         "message": "project: cannot be deleted while referenced by environment env_1, feature_flag flag_1",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    renameProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Project renamed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description The request body failed validation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold projects:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Project was not found (or belongs to a different organization). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listEnvironments: {
         parameters: {
             query?: {
@@ -4742,6 +6308,335 @@ export interface operations {
             };
         };
     };
+    deleteEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Environment deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold environments:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Environment was not found (or belongs to a different project or Organization). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The environment is still referenced by at least one dependent, named in the error message. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "environment_has_dependents",
+                     *         "message": "environment: cannot be deleted while referenced by environment_flag_config efc_1, credential cred_1",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    renameEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameEnvironmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Environment renamed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Environment"];
+                };
+            };
+            /** @description The request body failed validation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold environments:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Environment was not found (or belongs to a different project or Organization). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setEnvironmentProduction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetEnvironmentProductionRequest"];
+            };
+        };
+        responses: {
+            /** @description Environment's production marking updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Environment"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold environments:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Environment was not found (or belongs to a different project or Organization). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setEnvironmentApprovalPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetEnvironmentApprovalPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Environment's approval policy updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Environment"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold environments:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Environment was not found (or belongs to a different project or Organization). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cloneEnvironment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                /** @description The source environment being cloned. */
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloneEnvironmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Environment created; configurations copied where possible. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "environment": {
+                     *         "id": "018f2f3a-8100-7000-9c3a-1f2b3c4d5e6f",
+                     *         "project_id": "018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "name": "Staging Clone",
+                     *         "slug": "staging-clone",
+                     *         "is_production": false,
+                     *         "requires_approval": false,
+                     *         "disable_exempt_from_approval": true,
+                     *         "created_at": "2026-01-01T12:00:00Z",
+                     *         "updated_at": "2026-01-01T12:00:00Z"
+                     *       },
+                     *       "copied_feature_flag_ids": [
+                     *         "018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f"
+                     *       ],
+                     *       "skipped": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CloneEnvironmentResponse"];
+                };
+            };
+            /** @description Validation error (malformed JSON, invalid name or slug). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold environments:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The source environment was not found, belongs to another project, or the project belongs to another Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The new environment's slug is already taken in this project. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listFeatureFlags: {
         parameters: {
             query?: {
@@ -4751,6 +6646,10 @@ export interface operations {
                 offset?: number;
                 /** @description Include archived feature flags. Defaults to false, so the listing returns only the active set. This only changes which rows of the caller's own already-authorized project are returned, never which project can be queried. */
                 include_archived?: boolean;
+                /** @description Case-insensitive substring match against the flag's name or key. Absent or empty means unfiltered. */
+                search?: string;
+                /** @description Restrict the result to flags carrying this exact tag. Absent or empty means unfiltered. */
+                tag?: string;
             };
             header?: never;
             path: {
@@ -5033,6 +6932,156 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["FeatureFlag"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold feature-flags:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Feature flag was not found (or belongs to a different project or Organization). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "feature_flag_not_found",
+                     *         "message": "Feature flag was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteFeatureFlag: {
+        parameters: {
+            query?: {
+                /** @description Set to true to proceed despite a recent-evaluation warning. Has no effect on the dependents refusal, which confirm can never bypass. */
+                confirm?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                feature_flag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Feature flag deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold feature-flags:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Feature flag was not found (or belongs to a different project or Organization). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "feature_flag_not_found",
+                     *         "message": "Feature flag was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Either the flag is still referenced by at least one Rollout, Guardrail or Experiment (feature_flag_has_dependents, naming every one of them), or it was evaluated recently and confirm was not passed (feature_flag_delete_requires_confirmation). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    renameFeatureFlag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                feature_flag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameFeatureFlagRequest"];
+            };
+        };
+        responses: {
+            /** @description Feature flag renamed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeatureFlag"];
+                };
+            };
+            /** @description The request body failed validation, or attempted to change the flag's immutable key. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "feature_flag_key_immutable",
+                     *         "message": "A feature flag's key cannot be changed after creation.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Missing or invalid session token. */
@@ -5413,6 +7462,24 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description The feature flag's entitlement allocation is locked: the Organization is over its feature flag allowance for the current plan (after a downgrade, or after a subscription suspension reduced its grants to the free tier) and the grace period has elapsed. The flag keeps being read and evaluated normally; only creation and edits are refused, until the plan is upgraded or another feature flag is removed. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "entitlement_allocation_locked",
+                     *         "message": "This feature flag is locked because the organization is over its feature flag limit for the current plan. Upgrade the plan, or remove another feature flag, to edit it again.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description The session's Member does not hold environment-flag-configs:manage. */
             403: {
                 headers: {
@@ -5433,6 +7500,101 @@ export interface operations {
                      *       "error": {
                      *         "code": "environment_not_found",
                      *         "message": "Environment was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The configuration is owned by a scheduled or active Rollout (manual upserts are rejected), or the environment requires approval for configuration changes. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "environment_flag_config_approval_required",
+                     *         "message": "environment flag config: this environment requires approval for configuration changes",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    disableEnvironmentFlagConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                environment_id: string;
+                feature_flag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Flag disabled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvironmentFlagConfig"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold environment-flag-configs:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No configuration exists yet for this environment and feature flag (nothing to disable), the environment was not found, or it belongs to another Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "environment_flag_config_not_found",
+                     *         "message": "Environment flag configuration was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The environment requires approval for configuration changes and disabling is not exempt from that requirement. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "environment_flag_config_approval_required",
+                     *         "message": "environment flag config: this environment requires approval for configuration changes",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -5505,6 +7667,608 @@ export interface operations {
                      *       }
                      *     }
                      */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listFlagChangeHistory: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                environment_id: string;
+                feature_flag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description History points found (possibly empty). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "points": [
+                     *         {
+                     *           "id": "018f2f3a-b000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "environment_id": "018f2f3a-8000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "feature_flag_id": "018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "environment_flag_config_id": "018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "configuration": {
+                     *             "enabled": true,
+                     *             "default_variation_id": "018f2f3a-9200-7000-9c3a-1f2b3c4d5e6f",
+                     *             "rules": []
+                     *           },
+                     *           "actor": {
+                     *             "type": "member",
+                     *             "id": "018f2f3a-1100-7000-9c3a-1f2b3c4d5e6f"
+                     *           },
+                     *           "created_at": "2026-01-01T12:00:00Z"
+                     *         }
+                     *       ],
+                     *       "has_more": false
+                     *     }
+                     */
+                    "application/json": components["schemas"]["HistoryPointList"];
+                };
+            };
+            /** @description A limit/offset query parameter was malformed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "flag_change_history_validation_error",
+                     *         "message": "limit must be a valid integer.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold environment-flag-configs:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getFlagChangeHistoryPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                environment_id: string;
+                feature_flag_id: string;
+                history_point_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description History point found. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "018f2f3a-b000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "environment_id": "018f2f3a-8000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "feature_flag_id": "018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "environment_flag_config_id": "018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "configuration": {
+                     *         "enabled": true,
+                     *         "default_variation_id": "018f2f3a-9200-7000-9c3a-1f2b3c4d5e6f",
+                     *         "rules": []
+                     *       },
+                     *       "actor": {
+                     *         "type": "member",
+                     *         "id": "018f2f3a-1100-7000-9c3a-1f2b3c4d5e6f"
+                     *       },
+                     *       "created_at": "2026-01-01T12:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["HistoryPoint"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold environment-flag-configs:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description History point was not found, or belongs to another Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "history_point_not_found",
+                     *         "message": "History point was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    restoreFlagChangeHistoryPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                environment_id: string;
+                feature_flag_id: string;
+                history_point_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The point was restored; the resulting configuration. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "enabled": true,
+                     *       "default_variation_id": "018f2f3a-9200-7000-9c3a-1f2b3c4d5e6f",
+                     *       "rules": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ConfigurationSnapshot"];
+                };
+            };
+            /** @description The restored configuration is no longer valid: it references a variation or segment that no longer exists, or another validation error environmentflagconfig's own write path would reject. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "flag_restore_no_longer_valid",
+                     *         "message": "environment flag config: referenced variation does not belong to this feature flag",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The feature flag's entitlement allocation is locked (see the config PUT endpoint's identical 402). */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold environment-flag-configs:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description History point was not found, or belongs to another Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "history_point_not_found",
+                     *         "message": "History point was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The configuration is owned by a scheduled or active Rollout, or the environment requires approval for configuration changes. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "environment_flag_config_approval_required",
+                     *         "message": "environment flag config: this environment requires approval for configuration changes",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    compareFlagChangeHistoryPoints: {
+        parameters: {
+            query: {
+                before_id: string;
+                after_id: string;
+            };
+            header?: never;
+            path: {
+                environment_id: string;
+                feature_flag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Difference computed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "identical": false,
+                     *       "fields": [
+                     *         {
+                     *           "field": "enabled",
+                     *           "before": false,
+                     *           "after": true
+                     *         }
+                     *       ],
+                     *       "rules": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Difference"];
+                };
+            };
+            /** @description before_id or after_id was missing. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "flag_change_history_validation_error",
+                     *         "message": "before_id and after_id are both required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold environment-flag-configs:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Either history point was not found, or belongs to another Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    compareFlagChangeHistoryEnvironments: {
+        parameters: {
+            query: {
+                before_environment_id: string;
+                after_environment_id: string;
+            };
+            header?: never;
+            path: {
+                feature_flag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Difference computed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "identical": false,
+                     *       "fields": [
+                     *         {
+                     *           "field": "enabled",
+                     *           "before": false,
+                     *           "after": true
+                     *         }
+                     *       ],
+                     *       "rules": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Difference"];
+                };
+            };
+            /** @description before_environment_id or after_environment_id was missing. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "flag_change_history_validation_error",
+                     *         "message": "before_environment_id and after_environment_id are both required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold environment-flag-configs:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The feature flag was not found, or either environment was not found, belongs to another Organization, or belongs to a different Project than the feature flag. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    promoteFlagChangeHistoryConfiguration: {
+        parameters: {
+            query: {
+                source_environment_id: string;
+                target_environment_id: string;
+            };
+            header?: never;
+            path: {
+                feature_flag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The target's resulting configuration. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigurationSnapshot"];
+                };
+            };
+            /** @description Missing query parameters, or the promoted configuration is no longer valid for the target (a referenced variation or segment absent from it). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The feature flag's entitlement allocation is locked (see the config PUT endpoint's identical 402). */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold environment-flag-configs:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The feature flag was not found, the source has no configuration, or either environment was not found, belongs to another Organization, or belongs to a different Project than the feature flag. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The configuration is owned by a scheduled or active Rollout, or the target environment requires approval for configuration changes. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    compareEnvironmentFlagSets: {
+        parameters: {
+            query: {
+                before_environment_id: string;
+                after_environment_id: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Per-flag comparisons (possibly empty). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example [
+                     *       {
+                     *         "feature_flag_id": "018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "feature_flag_key": "checkout-flow",
+                     *         "presence": "both",
+                     *         "difference": {
+                     *           "identical": false,
+                     *           "fields": [
+                     *             {
+                     *               "field": "enabled",
+                     *               "before": false,
+                     *               "after": true
+                     *             }
+                     *           ],
+                     *           "rules": []
+                     *         }
+                     *       }
+                     *     ]
+                     */
+                    "application/json": components["schemas"]["FlagComparison"][];
+                };
+            };
+            /** @description before_environment_id or after_environment_id was missing. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold environment-flag-configs:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Either environment was not found, belongs to another Organization, or belongs to a different Project. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -9306,6 +12070,98 @@ export interface operations {
             };
         };
     };
+    rotateCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential rotated. token is shown here once and never again. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "018f2f3a-b000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "organization_id": "018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "project_id": "018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "environment_id": "018f2f3a-8000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "scopes": [
+                     *         "config:read"
+                     *       ],
+                     *       "public": false,
+                     *       "status": "active",
+                     *       "created_at": "2026-01-01T12:00:00Z",
+                     *       "token": "svc_018f2f3a-b000-7000-9c3a-1f2b3c4d5e6f.9a1c3e7f3a9c1b2e4d6a8f0c1b3d5e7f",
+                     *       "previous_secret_expires_at": "2026-01-02T12:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RotatedCredential"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold credentials:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The credential was not found, or belongs to another Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "credential_not_found",
+                     *         "message": "Credential was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The credential has been revoked, so it cannot be rotated. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "credential_revoked",
+                     *         "message": "A revoked credential cannot be rotated.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     revokeCredential: {
         parameters: {
             query?: never;
@@ -9658,22 +12514,27 @@ export interface operations {
                 };
                 content: {
                     /**
-                     * @example [
-                     *       {
-                     *         "id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
-                     *         "webhook_endpoint_id": "018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f",
-                     *         "event_type": "flag.published",
-                     *         "status": "delivered",
-                     *         "attempt_count": 1,
-                     *         "last_attempted_at": "2026-01-01T12:00:05Z",
-                     *         "next_attempt_at": "2026-01-01T12:00:05Z",
-                     *         "last_failure_reason": "",
-                     *         "created_at": "2026-01-01T12:00:00Z",
-                     *         "updated_at": "2026-01-01T12:00:05Z"
-                     *       }
-                     *     ]
+                     * @example {
+                     *       "deliveries": [
+                     *         {
+                     *           "id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "webhook_endpoint_id": "018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "event_type": "flag.published",
+                     *           "status": "delivered",
+                     *           "attempt_count": 1,
+                     *           "last_attempted_at": "2026-01-01T12:00:05Z",
+                     *           "next_attempt_at": "2026-01-01T12:00:05Z",
+                     *           "last_failure_reason": "",
+                     *           "created_at": "2026-01-01T12:00:00Z",
+                     *           "updated_at": "2026-01-01T12:00:05Z"
+                     *         }
+                     *       ],
+                     *       "limit": 50,
+                     *       "offset": 0,
+                     *       "has_more": false
+                     *     }
                      */
-                    "application/json": components["schemas"]["WebhookDeliveryMetadata"][];
+                    "application/json": components["schemas"]["ListWebhookDeliveriesResponse"];
                 };
             };
             /** @description A limit/offset query parameter was malformed. */
@@ -9800,7 +12661,10 @@ export interface operations {
     getConfiguration: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description An ETag previously returned by this endpoint. If it still matches the current Configuration Version, the response is 304 Not Modified with no body. */
+                "If-None-Match"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -9809,6 +12673,8 @@ export interface operations {
             /** @description The caller's Environment configuration. */
             200: {
                 headers: {
+                    /** @description Quoted Configuration Version (e.g. "v3") — present on both 200 and 304 responses. */
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -9845,11 +12711,21 @@ export interface operations {
                      *             }
                      *           ]
                      *         }
-                     *       ]
+                     *       ],
+                     *       "poll_interval_seconds": 30
                      *     }
                      */
                     "application/json": components["schemas"]["Configuration"];
                 };
+            };
+            /** @description The If-None-Match request header matches the current Configuration Version — nothing changed since the caller's last fetch. No body. */
+            304: {
+                headers: {
+                    /** @description Quoted Configuration Version (e.g. "v3"). */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Missing, unknown, revoked or otherwise invalid Credential token. */
             401: {
@@ -9866,6 +12742,15 @@ export interface operations {
                      *       }
                      *     }
                      */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Organization is not entitled to published configuration right now. Two distinct, separately identifiable causes share this status: its subscription is suspended for non-payment (subscription_suspended), or it has exceeded the monthly tracked users included in its plan (mtu_cap_exceeded). Both are business-rule refusals, not authentication failures — the Credential itself is valid. A past-due (but not yet suspended) subscription is still served normally. An SDK holding a previously fetched configuration continues serving it under its documented failure-isolation behavior. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -10041,21 +12926,12 @@ export interface operations {
                     "application/json": components["schemas"]["SubmitExposureEventsResponse"];
                 };
             };
-            /** @description Validation error (malformed JSON, or an event missing a required field other than an unresolvable flag_key, which is dropped rather than rejected). */
+            /** @description Validation error: malformed JSON, an event missing a required field other than an unresolvable flag_key (which is dropped rather than rejected), or a batch carrying more than SubmitExposureEventsRequest.events' declared maxItems. */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "error": {
-                     *         "code": "exposure_submission_validation_error",
-                     *         "message": "events[0] is missing a required field.",
-                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
-                     *       }
-                     *     }
-                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -10429,6 +13305,201 @@ export interface operations {
                      *       "error": {
                      *         "code": "metric_definition_not_found",
                      *         "message": "Metric definition or environment was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteMetricDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                metric_definition_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metric definition deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold metrics:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Metric definition was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The metric definition is still referenced by at least one Guardrail or Connector, named in the error message. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "metric_definition_has_dependents",
+                     *         "message": "metric definition: cannot be deleted while referenced by guardrail gr_1, connector conn_1",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    renameMetricDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                metric_definition_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameMetricDefinitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Metric definition renamed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricDefinition"];
+                };
+            };
+            /** @description The request body failed validation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold metrics:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Metric definition was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    archiveMetricDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                metric_definition_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metric definition archived. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold metrics:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Metric definition was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The metric definition is already archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "metric_definition_already_archived",
+                     *         "message": "This metric definition is already archived.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -11531,6 +14602,8 @@ export interface operations {
             /** @description Redirect to the identity provider's authorization endpoint. */
             302: {
                 headers: {
+                    /** @description `growth_ops_login_binding=<secret>; Path=/v1/auth/callback; Max-Age=600; HttpOnly; SameSite=Lax`, plus `Secure` outside development. Only its digest is stored with the LoginAttempt; the callback requires the value back. */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content?: never;
@@ -11566,7 +14639,10 @@ export interface operations {
                 Accept?: string;
             };
             path?: never;
-            cookie?: never;
+            cookie: {
+                /** @description The browser-binding secret issued when the login was started. A callback that does not present it is refused before any authorization code is exchanged. */
+                growth_ops_login_binding: string;
+            };
         };
         requestBody?: never;
         responses: {
@@ -11610,6 +14686,24 @@ export interface operations {
                      *       "error": {
                      *         "code": "callback_invalid",
                      *         "message": "The login callback is invalid or has expired.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The authenticated identity has no Member yet and the organization has no available seat, so just-in-time provisioning was refused and no Member was created. Reported distinctly from the 401 above because the login is retryable once a seat is freed or the plan is upgraded. An already-provisioned Member signing in again is unaffected. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "seat_limit_exceeded",
+                     *         "message": "This organization has no available seats. Free up a seat or upgrade the plan, then try again.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -11761,6 +14855,580 @@ export interface operations {
             };
         };
     };
+    requestStaffMagicLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "email": "ops@rollfuse.example"
+                 *     }
+                 */
+                "application/json": components["schemas"]["RequestStaffMagicLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Always returned, whether or not the email matches an active StaffMember. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "message": "If that email belongs to platform staff, a login link has been sent."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RequestStaffMagicLinkResponse"];
+                };
+            };
+            /** @description Rate limit exceeded (per IP or per recipient email). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "rate_limited",
+                     *         "message": "Too many requests. Please try again later.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    peekStaffMagicLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Returned whether or not the token is usable: an unknown, expired or already-used token is reported as `valid: false` rather than as an error status, so this endpoint discloses nothing beyond usability. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "valid": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PeekStaffMagicLinkResponse"];
+                };
+            };
+            /** @description Rate limit exceeded (per IP). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "rate_limited",
+                     *         "message": "Too many requests. Please try again later.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    confirmStaffMagicLink: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description An Accept value preferring `text/html` selects the browser response (cookie + redirect) instead of the JSON body. */
+                Accept?: string;
+            };
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Login completed for a non-browser caller. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "staff_member": {
+                     *         "id": "01930000-0000-7000-8000-00000000000a",
+                     *         "email": "ops@rollfuse.example",
+                     *         "name": "Ops",
+                     *         "status": "active",
+                     *         "permissions": [
+                     *           "billing:refund"
+                     *         ]
+                     *       },
+                     *       "session_token": "stfs_01930000-0000-7000-8000-00000000000b.7f3a9c1b2e4d6a8f0c1b3d5e7f9a1c3e",
+                     *       "expires_at": "2026-01-02T12:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ConfirmStaffMagicLinkResponse"];
+                };
+            };
+            /** @description Login completed for a browser. The StaffSession is set as an HttpOnly cookie and the browser is redirected to the web app. */
+            302: {
+                headers: {
+                    /** @description The configured web app base URL, plus `/staff`. */
+                    Location?: string;
+                    /** @description `rf_staff_session=<token>; Path=/; HttpOnly; SameSite=Lax`, plus `Secure` outside development and `Domain` when configured. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The token is invalid, expired, already used, or resolves to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "staff_magic_link_invalid",
+                     *         "message": "This login link is invalid, expired or has already been used.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    currentStaffSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The staff identity behind the presented StaffSession. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "staff_member": {
+                     *         "id": "01930000-0000-7000-8000-00000000000a",
+                     *         "email": "ops@rollfuse.example",
+                     *         "name": "Ops",
+                     *         "status": "active",
+                     *         "permissions": [
+                     *           "billing:refund"
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CurrentStaffSessionResponse"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "staff_session_invalid",
+                     *         "message": "A valid staff session is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    staffLogout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session was revoked and the cookie cleared. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No staff credential was presented, or the presented one is invalid, expired or already revoked. The cookie is cleared in this case too. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "staff_session_invalid",
+                     *         "message": "A valid staff session is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request was authenticated by the staff cookie and carried no allowed Origin header. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "staff_origin_rejected",
+                     *         "message": "This request's origin is not allowed to perform staff writes.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revokeStaffSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The StaffSession to revoke.
+                 * @example 01930000-0000-7000-8000-00000000000b
+                 */
+                staff_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session is revoked (or already was). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid StaffSession was presented. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "staff_session_invalid",
+                     *         "message": "A valid staff session is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request was authenticated by the staff cookie and carried no allowed Origin header. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "staff_origin_rejected",
+                     *         "message": "This request's origin is not allowed to perform staff writes.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such session belongs to the calling StaffMember. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "staff_session_not_found",
+                     *         "message": "No such staff session.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getStaffChargeRefundStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                charge_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The charge's refund status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "charge": {
+                     *         "id": "01930000-0000-7000-8000-0000000000c1",
+                     *         "organization_id": "01930000-0000-7000-8000-000000000001",
+                     *         "status": "paid",
+                     *         "amount": 10000,
+                     *         "currency": "BRL",
+                     *         "refunded_amount": 4000,
+                     *         "remaining_refundable_amount": 6000
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["StaffChargeResponse"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "staff_session_invalid",
+                     *         "message": "A valid staff session is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `billing:refund`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "staff_permission_denied",
+                     *         "message": "The staff member does not have the required permission.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such charge, or the charge belongs to a different Organization than the one named in the path. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "billing_not_found",
+                     *         "message": "Billing information was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    issueStaffChargeRefund: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                charge_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "amount": 5000
+                 *     }
+                 */
+                "application/json": components["schemas"]["IssueRefundRequest"];
+            };
+        };
+        responses: {
+            /** @description The gateway accepted the refund request. The returned charge's refunded total is unchanged until the gateway's webhook confirms it. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "charge": {
+                     *         "id": "01930000-0000-7000-8000-0000000000c1",
+                     *         "organization_id": "01930000-0000-7000-8000-000000000001",
+                     *         "status": "paid",
+                     *         "amount": 10000,
+                     *         "currency": "BRL",
+                     *         "refunded_amount": 4000,
+                     *         "remaining_refundable_amount": 6000
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["StaffChargeResponse"];
+                };
+            };
+            /** @description The requested amount is not a positive integer. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "billing_validation_error",
+                     *         "message": "The refund amount must be a positive integer in the charge's currency.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "staff_session_invalid",
+                     *         "message": "A valid staff session is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `billing:refund`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "staff_permission_denied",
+                     *         "message": "The staff member does not have the required permission.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such charge, or the charge belongs to a different Organization than the one named in the path. No gateway call is attempted. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "billing_not_found",
+                     *         "message": "Billing information was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The requested amount exceeds the charge's remaining refundable balance (`refund_exceeds_remaining_balance`), or the charge never reached the payment gateway and so has nothing there to refund (`charge_not_refundable`). No gateway call is attempted in either case. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "refund_exceeds_remaining_balance",
+                     *         "message": "The requested refund exceeds this charge's remaining refundable balance.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     logout: {
         parameters: {
             query?: never;
@@ -11890,6 +15558,10 @@ export interface operations {
                      *           "payload": {
                      *             "role": "admin"
                      *           },
+                     *           "actor": {
+                     *             "type": "member",
+                     *             "id": "018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f"
+                     *           },
                      *           "created_at": "2026-01-01T12:00:00Z"
                      *         }
                      *       ],
@@ -11979,8 +15651,8 @@ export interface operations {
                 };
                 content: {
                     /**
-                     * @example id,organization_id,event_type,subject_type,subject_id,created_at,payload
-                     *     018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f,018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f,role.granted,member,018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f,2026-01-01T12:00:00Z,"{""role"":""admin""}"
+                     * @example id,organization_id,event_type,subject_type,subject_id,actor_type,actor_id,created_at,payload
+                     *     018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f,018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f,role.granted,member,018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f,member,018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f,2026-01-01T12:00:00Z,"{""role"":""admin""}"
                      */
                     "text/csv": string;
                     "application/json": components["schemas"]["AuditEvent"][];
@@ -12803,6 +16475,15 @@ export interface operations {
                     "application/scim+json": components["schemas"]["ScimError"];
                 };
             };
+            /** @description The organization has no available seat, so no Member was created. Retrying succeeds once a seat is freed (a Member is deactivated) or the plan is upgraded. Re-provisioning an externalId that already has a Member is unaffected: it reuses that Member and consumes no additional seat. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": components["schemas"]["ScimError"];
+                };
+            };
         };
     };
     getScimUser: {
@@ -13248,6 +16929,370 @@ export interface operations {
             };
         };
     };
+    getOrganizationPaymentMethod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's payment method of record, if any. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "organization_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f",
+                     *       "present": true,
+                     *       "payment_method": {
+                     *         "brand": "visa",
+                     *         "last4": "4242",
+                     *         "exp_month": 12,
+                     *         "exp_year": 2030
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["OrganizationPaymentMethod"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold billing:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The requested Organization is not the caller's own. Deliberately indistinguishable from an unknown Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    replaceOrganizationPaymentMethod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "payment_method_id": "pm_1QZxYzAbCdEfGhIj"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ReplacePaymentMethodRequest"];
+            };
+        };
+        responses: {
+            /** @description The payment method now on record. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "organization_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f",
+                     *       "present": true,
+                     *       "payment_method": {
+                     *         "brand": "mastercard",
+                     *         "last4": "4444",
+                     *         "exp_month": 8,
+                     *         "exp_year": 2029
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["OrganizationPaymentMethod"];
+                };
+            };
+            /** @description Validation error or malformed JSON body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "billing_validation_error",
+                     *         "message": "payment_method_id is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold billing:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The requested Organization is not the caller's own, or it has no subscription to bill. Deliberately indistinguishable from an unknown Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The payment provider does not hold the named payment method (`payment_method_not_found`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "payment_method_not_found",
+                     *         "message": "That payment method is not available at the payment provider. Add it again.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listOrganizationCharges: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's charges. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "charges": [
+                     *         {
+                     *           "id": "018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "organization_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f",
+                     *           "status": "paid",
+                     *           "amount": 4900,
+                     *           "currency": "BRL",
+                     *           "refunded_amount": 0,
+                     *           "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1/live_1",
+                     *           "receipt_url": "https://pay.stripe.com/receipts/payment/receipt_1",
+                     *           "created_at": "2026-01-01T12:00:00Z"
+                     *         },
+                     *         {
+                     *           "id": "018f2f3a-9001-7000-9c3a-1f2b3c4d5e6f",
+                     *           "organization_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f",
+                     *           "status": "pending",
+                     *           "amount": 1900,
+                     *           "currency": "BRL",
+                     *           "refunded_amount": 0,
+                     *           "created_at": "2026-01-02T12:00:00Z"
+                     *         }
+                     *       ],
+                     *       "has_more": false
+                     *     }
+                     */
+                    "application/json": components["schemas"]["OrganizationChargeList"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold billing:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The requested Organization is not the caller's own. Deliberately indistinguishable from an unknown Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getOrganizationCharge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                charge_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The charge. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "charge": {
+                     *         "id": "018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "organization_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f",
+                     *         "status": "paid",
+                     *         "amount": 4900,
+                     *         "currency": "BRL",
+                     *         "refunded_amount": 0,
+                     *         "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1/live_1",
+                     *         "receipt_url": "https://pay.stripe.com/receipts/payment/receipt_1",
+                     *         "created_at": "2026-01-01T12:00:00Z"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["OrganizationChargeItem"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold billing:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The charge does not exist, or belongs to another Organization, or the requested Organization is not the caller's own — one deliberately non-revealing response for all three. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "billing_not_found",
+                     *         "message": "Billing information was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getOrganizationSubscriptionStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's subscription status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "organization_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f",
+                     *       "status": "suspended",
+                     *       "suspended": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["OrganizationSubscriptionStatus"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The requested Organization is not the caller's own. Deliberately indistinguishable from an unknown Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listBillingPlans: {
         parameters: {
             query?: never;
@@ -13330,6 +17375,1052 @@ export interface operations {
             };
             /** @description Missing or invalid session token. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listPublicBillingPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The published plan catalog. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "plans": [
+                     *         {
+                     *           "plan": {
+                     *             "key": "free",
+                     *             "display_name": "Free",
+                     *             "description": "For trying rollfuse out.",
+                     *             "plan_version_id": "01920000-0000-7000-8000-000000000050",
+                     *             "version": 3
+                     *           },
+                     *           "is_default": true,
+                     *           "grants": [
+                     *             {
+                     *               "resource_key": "seat",
+                     *               "policy_kind": "finite",
+                     *               "policy_limit": 2
+                     *             },
+                     *             {
+                     *               "resource_key": "mtu",
+                     *               "policy_kind": "capped_metered",
+                     *               "policy_limit": 1000
+                     *             }
+                     *           ],
+                     *           "prices": [
+                     *             {
+                     *               "id": "01920000-0000-7000-8000-000000000051",
+                     *               "amount": 0,
+                     *               "currency": "BRL",
+                     *               "interval": "month",
+                     *               "is_default": true,
+                     *               "overage_rates": []
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "plan": {
+                     *             "key": "starter",
+                     *             "display_name": "Starter",
+                     *             "description": "For small teams shipping their first feature flags.",
+                     *             "plan_version_id": "01920000-0000-7000-8000-000000000040",
+                     *             "version": 2
+                     *           },
+                     *           "is_default": false,
+                     *           "grants": [
+                     *             {
+                     *               "resource_key": "project",
+                     *               "policy_kind": "finite",
+                     *               "policy_limit": 3
+                     *             },
+                     *             {
+                     *               "resource_key": "seat",
+                     *               "policy_kind": "finite",
+                     *               "policy_limit": 5
+                     *             },
+                     *             {
+                     *               "resource_key": "mtu",
+                     *               "policy_kind": "metered",
+                     *               "policy_limit": 25000
+                     *             }
+                     *           ],
+                     *           "prices": [
+                     *             {
+                     *               "id": "01920000-0000-7000-8000-000000000041",
+                     *               "amount": 12500,
+                     *               "currency": "BRL",
+                     *               "interval": "month",
+                     *               "is_default": true,
+                     *               "overage_rates": [
+                     *                 {
+                     *                   "resource_key": "mtu",
+                     *                   "amount_per_unit": 150,
+                     *                   "per_units": 1000
+                     *                 }
+                     *               ]
+                     *             },
+                     *             {
+                     *               "id": "01920000-0000-7000-8000-000000000043",
+                     *               "amount": 9900,
+                     *               "currency": "BRL",
+                     *               "interval": "month",
+                     *               "is_default": false,
+                     *               "overage_rates": [
+                     *                 {
+                     *                   "resource_key": "mtu",
+                     *                   "amount_per_unit": 150,
+                     *                   "per_units": 1000
+                     *                 }
+                     *               ]
+                     *             }
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PublicPlanCatalog"];
+                };
+            };
+            /** @description Rate limit exceeded for the originating IP address. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listSupportTickets: {
+        parameters: {
+            query?: {
+                /** @description Page size. Defaults to 50 when absent, zero, or above the maximum of 200. */
+                limit?: number;
+                /** @description Rows to skip in the newest-first ordering. Defaults to 0. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's Organization's feedback and tickets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSupportTicketsResponse"];
+                };
+            };
+            /** @description Invalid limit or offset. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createSupportTicket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSupportTicketRequest"];
+            };
+        };
+        responses: {
+            /** @description Feedback entry or support ticket created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicket"];
+                };
+            };
+            /** @description Validation error (invalid kind, missing required field for kind "ticket", or category outside the fixed set). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "support_validation_error",
+                     *         "message": "support ticket: category is not one of the allowed values",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The submitting Member exceeded the per-Member rate limit. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSupportTicket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                support_ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The feedback entry or support ticket. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicket"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or belongs to another Organization (identical response either way). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "support_ticket_not_found",
+                     *         "message": "Support ticket was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listSupportMessages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                support_ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ticket's message thread. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSupportMessagesResponse"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or belongs to another Organization (identical response either way). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    addSupportMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                support_ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddSupportMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Message posted. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddSupportMessageResponse"];
+                };
+            };
+            /** @description Missing message body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or belongs to another Organization (identical response either way). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The submitting Member exceeded the per-Member rate limit. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listSupportTicketAttachments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                support_ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ticket's attachments, oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSupportAttachmentsResponse"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or belongs to another Organization (identical response either way). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listSupportMessageAttachments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                support_message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The message's attachments, oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSupportAttachmentsResponse"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or belongs to another Organization (identical response either way). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    presignSupportAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresignSupportAttachmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Presigned upload issued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresignSupportAttachmentResponse"];
+                };
+            };
+            /** @description Validation error (neither or both of ticket_id/message_id set, declared content type outside image/jpeg or image/png, or declared size that would push the ticket/message's combined attachment total over 20MB). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The owning ticket was not found, or belongs to another Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The owning ticket/message already has 10 attachments. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "support_attachment_limit_exceeded",
+                     *         "message": "support attachment: at most 10 attachments are allowed per submission",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    confirmSupportAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                support_attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmSupportAttachmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Attachment confirmed and persisted. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportAttachment"];
+                };
+            };
+            /** @description The request body carries a field this contract does not declare — including object_key, which was removed: the server derives the object key and accepts none. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No upload was issued under this attachment_id, it was issued to another Organization, it was already confirmed, or the owning ticket/message was not found — one response for all four. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The owning ticket/message already has 10 attachments. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The object's actual content is not a valid JPEG or PNG image, or its size would push the owning ticket/message's combined attachment total over 20MB. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "support_attachment_invalid_content",
+                     *         "message": "support attachment: content is not a valid JPEG or PNG image",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    downloadSupportAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                support_attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A time-limited download URL for the attachment's object. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportAttachmentDownloadResponse"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or belongs to another Organization (identical response either way). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listStaffSupportTickets: {
+        parameters: {
+            query?: {
+                /** @description Page size. Defaults to 50 when absent, zero, or above the maximum of 200. */
+                limit?: number;
+                /** @description Rows to skip in the newest-first ordering. Defaults to 0. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Feedback and tickets across every Organization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSupportTicketsResponse"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `support:view`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getStaffSupportTicket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                support_ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The feedback entry or support ticket. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicket"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `support:view`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listStaffSupportMessages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                support_ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ticket's message thread. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSupportMessagesResponse"];
+                };
+            };
+            /** @description Missing or invalid StaffSession, or one lacking `support:view`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    addStaffSupportMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                support_ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddSupportMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description The created message and the ticket's resulting status. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddSupportMessageResponse"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `support:respond`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    closeStaffSupportTicket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                support_ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The now-resolved support ticket. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicket"];
+                };
+            };
+            /** @description The entry is `feedback` (no status lifecycle applies). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `support:close`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The ticket is already resolved. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    downloadStaffSupportAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                support_attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A time-limited download URL for the attachment's object. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportAttachmentDownloadResponse"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `support:view`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listStaffSupportTicketAttachments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                support_ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ticket's attachments, oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSupportAttachmentsResponse"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `support:view`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listStaffSupportMessageAttachments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                support_message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The message's attachments, oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSupportAttachmentsResponse"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `support:view`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

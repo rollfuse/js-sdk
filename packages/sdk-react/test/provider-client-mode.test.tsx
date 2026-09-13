@@ -8,6 +8,7 @@ import { useFlag, useFlags } from "../src/hooks.js";
 const baseConfig: Configuration = {
   environment_id: "env_1",
   version: 1,
+  poll_interval_seconds: 30,
   flags: [
     {
       flag_key: "checkout-redesign",

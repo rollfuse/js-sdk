@@ -18,6 +18,7 @@ import { RollfusePublicClient } from "../src/client.js";
 const config: Configuration = {
   environment_id: "env_1",
   version: 7,
+  poll_interval_seconds: 30,
   flags: [
     {
       flag_key: "checkout-redesign",
