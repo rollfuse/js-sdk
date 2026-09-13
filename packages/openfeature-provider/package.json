@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "OpenFeature server-side provider for rollfuse: use the CNCF OpenFeature JS SDK with rollfuse as the backing flag system.",
   "type": "module",
+  "sideEffects": false,
   "publishConfig": {
     "access": "public"
   },

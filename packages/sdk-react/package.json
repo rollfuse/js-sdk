@@ -3,6 +3,7 @@
   "version": "0.1.2",
   "description": "React/Next.js consumption layer for platform feature flags: a Provider fed by server-evaluated results, with useFlag/useFlags hooks, and no Service Credential ever reaching browser code.",
   "type": "module",
+  "sideEffects": false,
   "publishConfig": {
     "access": "public"
   },
@@ -37,7 +38,7 @@
     "react": ">=18"
   },
   "dependencies": {
-    "@rollfuse/contracts": "^0.2.2",
+    "@rollfuse/contracts": "^0.7.0",
     "@rollfuse/evaluation-core": "^0.2.0",
     "@rollfuse/sdk-browser": "^0.1.1"
   },
