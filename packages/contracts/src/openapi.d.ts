@@ -2078,6 +2078,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/social/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Start a platform-level Google login
+         * @description Redirects the browser to Google's OAuth authorization endpoint. This is the entry point for every self-serve signup, so it takes no `organization_id` — unlike `/v1/organizations/{organization_id}/login`, social login exists precisely to start a login before any Organization is known.
+         *
+         *     The response also issues a short-lived, `HttpOnly` browser-binding cookie scoped to `/v1/auth/social/google/callback`; the callback requires it back before exchanging any authorization code.
+         */
+        get: operations["initiateSocialLogin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/social/google/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Complete a platform-level Google login
+         * @description Verifies the callback's state against its tracked attempt, exchanges the authorization code, and resolves or just-in-time provisions the authenticated Member — auto-provisioning a new Organization, Project and Environment when the Google identity is unknown to the platform.
+         *
+         *     The `growth_ops_social_login_binding` cookie issued at `/v1/auth/social/google` is REQUIRED and is verified before the authorization code is exchanged. It is single-use and is cleared by this response either way.
+         *
+         *     The response shape is negotiated by the request's Accept header, identically to `/v1/auth/callback`: a browser receives the session as an `HttpOnly`, `SameSite=Lax` cookie and a redirect; every other caller receives the 200 JSON body, the only place the plaintext session token is ever returned.
+         */
+        get: operations["completeSocialLogin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/callback": {
         parameters: {
             query?: never;
@@ -2410,6 +2456,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/current/terms-acceptance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record the caller's acceptance of the terms of service
+         * @description Records that the signed-in Member deliberately accepted the terms of service currently in force, together with the version and the instant. This is the only path that writes an acceptance: no Member-creating path records one on the person's behalf, because a record written by a code path is evidence of the code path and not of an act.
+         *
+         *     Gated by a valid session only, with no permission requirement — a Member holding no role must be able to accept, since that is the default after just-in-time provisioning and they can reach nothing else until they have.
+         *
+         *     The Member and the Organization both come from the resolved session. There is no member id in the body and none in the path, so this endpoint can only ever write the caller's own row.
+         *
+         *     `terms_version` is compared against the version in force and the version in force is what gets recorded. A caller naming a different version is refused with `terms_version_mismatch` rather than recording what they asked for.
+         */
+        post: operations["acceptTerms"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/audit-events": {
         parameters: {
             query?: never;
@@ -2706,6 +2778,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{organization_id}/billing/subscription/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an organization's subscription
+         * @description Requires a session for a Member holding billing:manage. Takes no request body. Always classified as a voluntary cancellation — a non-payment cancellation only ever arrives through the payment gateway's own webhook path, never through this endpoint. Returns the subscription in its new, canceled state.
+         */
+        post: operations["cancelOrganizationSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{organization_id}/billing/setup-intent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a setup intent to collect a new payment method
+         * @description Requires a session for a Member holding billing:manage. Takes no request body. Creates nothing billable — it only lazily resolves the organization's gateway customer and returns a client secret the frontend confirms directly against the payment gateway before the collected payment method is ever referenced by a checkout, plan change or replacement call.
+         */
+        post: operations["createOrganizationSetupIntent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{organization_id}/billing/billing-details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update an organization's invoicing details
+         * @description Requires a session for a Member holding billing:manage. Creates nothing billable — it only lazily resolves the organization's gateway customer and forwards the supplied details to it. Every field is required.
+         */
+        post: operations["updateOrganizationBillingDetails"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{organization_id}/billing/payment-method": {
         parameters: {
             query?: never;
@@ -2784,6 +2916,46 @@ export interface paths {
         get: operations["getOrganizationSubscriptionStatus"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{organization_id}/entitlements/{resource_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an organization's entitlement status for a resource
+         * @description Requires a session, scoped to the caller's own Organization — an `organization_id` other than the caller's own is rejected identically to an unknown one. Reports the resource's policy (finite, capped-metered, metered or unlimited), the active count against a finite policy, current-period usage against a metered one, and an open downgrade selection window when one exists.
+         */
+        get: operations["getEntitlementStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{organization_id}/entitlements/{resource_key}/selection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finalize which resources survive a plan-downgrade selection
+         * @description Requires a session, scoped to the caller's own Organization, and entitlements:manage. Names exactly the resource ids to keep out of an open downgrade's over-cap allocations; the rest are released. Reachable only while the resource's downgrade selection window is still open.
+         */
+        post: operations["finalizeEntitlementSelection"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3002,6 +3174,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/staff/organizations/unserved-regions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Organizations declaring a region the deployment does not serve
+         * @description Requires a StaffSession holding `residency:review`. Lists every Organization whose declared data-residency region is outside the set this deployment actually serves, so an operator can reconcile the commitment with the customer.
+         *
+         *     The listing is read-only by design: a region is immutable after creation, and an Organization carrying one the infrastructure does not honor is reconciled by talking to the customer, not by rewriting the row. `total` counts every matching Organization, not just the page, and `served_regions` states what the listing was measured against. On a deployment that serves everything its Organizations declare, the listing is empty.
+         *
+         *     Each Organization the page returns is recorded as a staff read in that Organization's own audit trail, per platform-staff-access.
+         */
+        get: operations["listOrganizationsOnUnservedRegions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/staff/support/tickets": {
         parameters: {
             query?: never;
@@ -3146,10 +3342,183 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/erasure-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request erasure of your own account and personal data
+         * @description Records and acknowledges an authenticated Member's request to erase their account and personal data, and states the processing window the request will be answered within (thirty days by default, per ADR 0014). It does NOT erase anything: per personal-data-lifecycle, erasure is a recorded request with a stated window and a reported outcome per store, processed afterwards by an operator holding `privacy:erase`.
+         *     Whose data is erased comes from the presented session, never from the body — there is no field to name a subject — so this endpoint cannot be pointed at another person. A Member who already has an open request receives that one back rather than a second.
+         *     No permission is required beyond a valid session: asking for your own data to be erased is not a privilege.
+         */
+        post: operations["requestErasure"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/erasure-requests/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read back your own erasure request
+         * @description Returns the requesting Member's most recent erasure request that still names them. This is where a REFUSAL is read: when erasure is refused because the Member is the only administrator of an Organization with an active subscription, `refusal_reason` states what must happen first and the options available.
+         *     A completed request is deliberately unreachable here, and by construction rather than by a filter: completing an erasure clears the member id the request was keyed by, so nothing is left to match on. That is the point — the platform keeps no index of whom it has erased.
+         */
+        get: operations["getCurrentErasureRequest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/erasure-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record an erasure request that arrived through the published contact
+         * @description Requires a StaffSession holding `privacy:erase`. Records a request from a person who is not a Member and therefore has no account to ask from inside the product, per personal-data-lifecycle's "Erasure of a non-member" scenario: their records are located by the contact details they supplied.
+         *     If the address does turn out to belong to an account, the request covers that account too — the same stores, the same erasers.
+         */
+        post: operations["recordContactErasureRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/erasure-requests/{erasure_request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one erasure request and its outcome report
+         * @description Requires a StaffSession holding `privacy:erase`. Returns the request's status and, once processed, the per-store outcomes and the rendered report naming what was deleted, what was anonymized and what was retained with the reason for each.
+         */
+        get: operations["getErasureRequest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/erasure-requests/{erasure_request_id}/process": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Process a recorded erasure request across every enumerated store
+         * @description Requires a StaffSession holding `privacy:erase`. Visits every store in the enumerated erasure scope, records the outcome per store, and clears the identifying input from the request record itself once every store completed.
+         *     It is explicitly triggered rather than scheduled, per design.md: erasure processing is manual-triggered at first so it cannot run unattended before it is trusted.
+         *     Two outcomes are not success. If the requester is the only administrator of an Organization with an active subscription the whole request is REFUSED and nothing is erased, with `refusal_reason` stating what must happen first. If any single store fails, the request is recorded as `failed` with that store's outcome naming the failure, and it keeps its subject so it can be retried — it never reports a completeness it does not have.
+         */
+        post: operations["processErasureRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        RecordContactErasureRequest: {
+            /**
+             * Format: email
+             * @description The contact address the request arrived from. Records are located by it, canonically (trimmed and lower-cased).
+             */
+            email: string;
+        };
+        ErasureStoreOutcome: {
+            /**
+             * @description One store in the enumerated erasure scope. The scope is enumerated in exactly one place so a store added later cannot be silently skipped.
+             * @enum {string}
+             */
+            store: "members" | "member_access" | "approval_requests" | "visitor_journey" | "visitor_consent" | "leads" | "audit_events" | "flag_config_history" | "support" | "billing_charges" | "billing_notifications" | "identity_links";
+            /** @description The database tables that store covers. */
+            tables: string[];
+            /**
+             * @description What was done. `retained`, `not_applicable` and `failed` always carry a reason.
+             * @enum {string}
+             */
+            disposition: "deleted" | "anonymized" | "retained" | "not_applicable" | "failed";
+            /**
+             * Format: int64
+             * @description How many records the disposition applied to: deleted, anonymized, or counted and kept. Zero for a not-applicable or failed store.
+             */
+            records_affected: number;
+            /** @description Why the records were kept, why the store held nothing reachable, or why it failed. */
+            reason?: string;
+        };
+        /**
+         * @description A recorded erasure request, its acknowledgement and — once processed — the outcome per store.
+         *     It deliberately carries NO field naming the person: not the member id it was recorded against, not the contact address. The acknowledgement goes back to whoever already proved they are that person, so echoing it would only make the response another copy of what the request exists to erase. The stored record itself is cleared of both the moment processing completes.
+         */
+        ErasureRequest: {
+            id: string;
+            /**
+             * @description `member` for an authenticated in-product request, `contact` for one recorded by an operator on behalf of a person with no account.
+             * @enum {string}
+             */
+            origin: "member" | "contact";
+            /**
+             * @description `received` is recorded and awaiting processing. `completed` is every store visited without failure, with the identifying input cleared. `refused` is nothing erased, with `refusal_reason` saying what must happen first. `failed` is at least one store that could not be processed, kept retryable.
+             * @enum {string}
+             */
+            status: "received" | "completed" | "refused" | "failed";
+            /** @description The plain-language acknowledgement, stating the processing window while the request is open. */
+            acknowledgement: string;
+            /** Format: date-time */
+            requested_at: string;
+            /**
+             * Format: date-time
+             * @description The deadline of the stated processing window, persisted when the request was recorded so a later configuration change cannot move a commitment already made.
+             */
+            respond_by: string;
+            /** @description The stated window in days, derived from this request's own timestamps. */
+            response_window_days: number;
+            /**
+             * Format: date-time
+             * @description When the request finished processing, or null while still pending.
+             */
+            processed_at: string | null;
+            /** @description Present only for a refused request: what must happen first, and the options available. */
+            refusal_reason?: string;
+            /** @description One entry per enumerated store, in registry order. */
+            outcomes: components["schemas"]["ErasureStoreOutcome"][];
+            /** @description The rendered, human-readable report naming what was deleted, what was anonymized and what was retained with the reason for each. Empty until the request has been processed. */
+            report?: string;
+        };
         StatusResponse: {
             /** @example ok */
             status: string;
@@ -3303,6 +3672,8 @@ export interface components {
             locale: "en" | "pt-br";
             /** @description The submitting browser's pseudonymous visitor id, sent only when the visitor granted analytics consent. Optional: a submission without it is equally valid, and stitching the Lead to that visitor's journey never affects whether the Lead is persisted. */
             visitor_session_id?: string;
+            /** @description The specific page or tool that captured this lead (e.g. "pricing_page", "migration_checker"), distinct from landing_url. Optional. */
+            source?: string;
         };
         Lead: {
             id: string;
@@ -3317,6 +3688,7 @@ export interface components {
             utm_content?: string;
             landing_url?: string;
             referrer?: string;
+            source?: string;
             /** @enum {string} */
             locale: "en" | "pt-br";
             /** Format: date-time */
@@ -3325,27 +3697,46 @@ export interface components {
         CreateOrganizationRequest: {
             name: string;
             slug: string;
-            /** @enum {string} */
-            region: "us" | "eu";
+            /**
+             * @description The declared data-residency region. The accepted set is the set of regions this deployment actually serves, taken from its `SERVED_REGIONS` configuration — not from this enumeration, which mirrors it. This deployment serves `us` only: every byte is stored in one Amazon Web Services United States region. A recognized region it does not serve (for example `eu`) is refused with `organization_region_not_served` rather than accepted and quietly stored elsewhere.
+             * @enum {string}
+             */
+            region: "us";
         };
         Organization: {
             id: string;
             name: string;
             slug: string;
-            /** @enum {string} */
+            /**
+             * @description The data-residency region this Organization declared when it was created. It is immutable. The set accepted at creation is narrower than the set readable here: an Organization created before a region was withdrawn still carries it, and those are listed for reconciliation at `GET /v1/staff/organizations/unserved-regions`. A region here is a declared and audited commitment, not one enforced by separate regional infrastructure — this deployment stores all data in one Amazon Web Services United States region.
+             * @enum {string}
+             */
             region: "us" | "eu";
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             updated_at: string;
         };
+        /** @description One page of Organizations declaring a data-residency region this deployment does not serve, for operator reconciliation. */
+        UnservedRegionOrganizationsResponse: {
+            organizations: components["schemas"]["Organization"][];
+            /** @description The number of matching Organizations across the whole table, not just this page, so a capped page discloses what it left behind. */
+            total: number;
+            limit: number;
+            offset: number;
+            /** @description The regions this deployment actually serves, which is what membership of this listing was measured against. */
+            served_regions: string[];
+        };
         /** @description An Organization plus its single-use identity-provider bootstrap credential, returned in plaintext exactly once and never retrievable again. */
         CreateOrganizationResponse: {
             id: string;
             name: string;
             slug: string;
-            /** @enum {string} */
-            region: "us" | "eu";
+            /**
+             * @description The data-residency region assigned to the new Organization. See the `Organization` schema's own `region` for what the commitment means and where the data actually lives.
+             * @enum {string}
+             */
+            region: "us";
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -4157,7 +4548,7 @@ export interface components {
             /** @enum {string} */
             status: "active" | "disabled";
             /** @description The staff permissions this StaffMember was granted, drawn from a small fixed catalog. Read-only here: granting and revoking are out-of-band operations with no API surface. */
-            permissions: ("billing:refund" | "support:view" | "support:respond" | "support:close")[];
+            permissions: ("billing:refund" | "support:view" | "support:respond" | "support:close" | "privacy:erase" | "residency:review")[];
         };
         /** @description The only place the plaintext StaffSession token is ever returned; only its one-way hash is persisted. */
         ConfirmStaffMagicLinkResponse: {
@@ -4225,6 +4616,21 @@ export interface components {
             };
             /** @description The roles this Member holds. Empty for a Member with no role assignment, which is the default after just-in-time provisioning. */
             roles: string[];
+            /**
+             * @description The terms of service in force, and whether this Member still owes an acceptance of it. Carried on the identity response rather than on a second endpoint because the operator shell reads this on every authenticated render, and a separate call would let an authenticated screen paint before the answer arrived.
+             *
+             *     No acceptance timestamp and no previously-accepted version are reported: the client only needs to know whether to ask. The record itself is evidence held server-side.
+             */
+            terms?: {
+                /** @description The version marker of the terms of service currently in force, empty on a deployment that publishes no terms. Clients render this rather than restating a version of their own, so the published document and the accepted version cannot drift apart. */
+                current_version: string;
+                /** @description True when this Member's recorded acceptance is for an earlier version or for nothing at all. A Member provisioned by SCIM, by an invite, by just-in-time OIDC login or by social signup starts with no recorded acceptance, so this is true for all of them until they have accepted. */
+                acceptance_required: boolean;
+            };
+        };
+        /** @description The version the caller is accepting. It is COMPARED against the version in force, never stored as given: a stale browser cannot record an acceptance of the document it happened to be showing. */
+        AcceptTermsRequest: {
+            terms_version: string;
         };
         GrantRoleRequest: {
             /** @enum {string} */
@@ -4755,6 +5161,14 @@ export interface components {
             /** @description The payment gateway's own id for an instrument already collected and verified by the browser. No card data is ever sent to this API. */
             payment_method_id: string;
         };
+        UpdateBillingDetailsRequest: {
+            billing_email: string;
+            organization_legal_name: string;
+            /** @description ISO 3166-1 alpha-2 country code. */
+            country: string;
+            /** @description The organization's tax identifier (e.g. CNPJ in Brazil). */
+            tax_id: string;
+        };
         /** @description Identifies a saved instrument without describing it well enough to use. It never carries a full instrument number: `last4` is at most four digits, and there is no other numeric field. */
         PaymentMethodSummary: {
             /**
@@ -4890,6 +5304,57 @@ export interface components {
             price_id: string;
             /** @description A payment method verified through a setup intent (see POST .../billing/setup-intent). Always required: checkout always collects a new payment method, even for an organization whose prior Subscription is canceled — it never reuses one. */
             payment_method_id: string;
+        };
+        EntitlementPolicy: {
+            /** @enum {string} */
+            kind: "finite" | "metered" | "capped_metered" | "unlimited";
+            /** @description Present only for a finite policy. */
+            limit?: number;
+            /** @description Present only for a metered or capped-metered policy. */
+            included_amount?: number;
+            /** @description Present only for a metered or capped-metered policy. */
+            period?: string;
+        };
+        EntitlementUsagePeriod: {
+            /** Format: date-time */
+            period_start: string;
+            /** Format: date-time */
+            period_end: string;
+            amount: number;
+        };
+        EntitlementMeteredUsage: {
+            included_amount: number;
+            period: string;
+            current_period?: components["schemas"]["EntitlementUsagePeriod"];
+        };
+        EntitlementDowngradeEvent: {
+            /** Format: date-time */
+            selection_deadline_at: string;
+            /** Format: date-time */
+            lock_deadline_at: string;
+            selection_method: string;
+        };
+        EntitlementAllocation: {
+            resource_id: string;
+            status: string;
+            /** Format: date-time */
+            allocated_at: string;
+        };
+        EntitlementStatus: {
+            resource_key: string;
+            policy: components["schemas"]["EntitlementPolicy"];
+            /** @description 0 for a metered grant, which has no allocations to count. */
+            active_count: number;
+            open_downgrade_event?: components["schemas"]["EntitlementDowngradeEvent"];
+            pending_selection?: components["schemas"]["EntitlementAllocation"][];
+            metered_usage?: components["schemas"]["EntitlementMeteredUsage"];
+        };
+        FinalizeEntitlementSelectionRequest: {
+            kept_resource_ids: string[];
+        };
+        CreateSetupIntentResponse: {
+            /** @description The payment gateway's setup-intent client secret. The frontend confirms it directly against the gateway; it never reaches this API again. */
+            client_secret: string;
         };
         CreateSupportTicketRequest: {
             /** @enum {string} */
@@ -5117,21 +5582,16 @@ export interface operations {
                     "application/json": components["schemas"]["CreateOrganizationResponse"];
                 };
             };
-            /** @description Validation error or malformed JSON body. */
+            /**
+             * @description Validation error, malformed JSON body, or a declared region this deployment does not serve.
+             *
+             *     Two distinct codes: `organization_validation_error` for a malformed field (including a region that is not a recognized region name at all), and `organization_region_not_served` for a recognized region the deployment has no infrastructure in. The second names the refused region and the regions actually served, so a caller can retry against one that exists.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "error": {
-                     *         "code": "organization_validation_error",
-                     *         "message": "organization: slug is required",
-                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
-                     *       }
-                     *     }
-                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -6058,6 +6518,9 @@ export interface operations {
                      *           "project_id": "018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f",
                      *           "name": "Production",
                      *           "slug": "production",
+                     *           "is_production": false,
+                     *           "requires_approval": false,
+                     *           "disable_exempt_from_approval": true,
                      *           "created_at": "2026-01-01T12:00:00Z",
                      *           "updated_at": "2026-01-01T12:00:00Z"
                      *         }
@@ -6158,6 +6621,9 @@ export interface operations {
                      *       "project_id": "018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f",
                      *       "name": "Production",
                      *       "slug": "production",
+                     *       "is_production": false,
+                     *       "requires_approval": false,
+                     *       "disable_exempt_from_approval": true,
                      *       "created_at": "2026-01-01T12:00:00Z",
                      *       "updated_at": "2026-01-01T12:00:00Z"
                      *     }
@@ -6263,6 +6729,9 @@ export interface operations {
                      *       "project_id": "018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f",
                      *       "name": "Production",
                      *       "slug": "production",
+                     *       "is_production": false,
+                     *       "requires_approval": false,
+                     *       "disable_exempt_from_approval": true,
                      *       "created_at": "2026-01-01T12:00:00Z",
                      *       "updated_at": "2026-01-01T12:00:00Z"
                      *     }
@@ -6672,6 +7141,7 @@ export interface operations {
                      *           "id": "018f2f3a-8000-7000-9c3a-1f2b3c4d5e6f",
                      *           "project_id": "018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f",
                      *           "name": "New Checkout Flow",
+                     *           "description": "Rolls out the redesigned checkout flow.",
                      *           "key": "new-checkout-flow",
                      *           "variations": [
                      *             {
@@ -6685,13 +7155,15 @@ export interface operations {
                      *               "value": false
                      *             }
                      *           ],
+                     *           "tags": [],
                      *           "created_at": "2026-01-01T12:00:00Z",
                      *           "updated_at": "2026-01-01T12:00:00Z",
                      *           "archived_at": null
                      *         }
                      *       ],
                      *       "limit": 50,
-                     *       "offset": 0
+                     *       "offset": 0,
+                     *       "has_more": false
                      *     }
                      */
                     "application/json": components["schemas"]["ListFeatureFlagsResponse"];
@@ -6795,6 +7267,7 @@ export interface operations {
                      *       "id": "018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f",
                      *       "project_id": "018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f",
                      *       "name": "New Checkout Flow",
+                     *       "description": "Rolls out the redesigned checkout flow.",
                      *       "key": "new-checkout-flow",
                      *       "variations": [
                      *         {
@@ -6808,6 +7281,7 @@ export interface operations {
                      *           "value": false
                      *         }
                      *       ],
+                     *       "tags": [],
                      *       "created_at": "2026-01-01T12:00:00Z",
                      *       "updated_at": "2026-01-01T12:00:00Z",
                      *       "archived_at": null
@@ -6913,6 +7387,7 @@ export interface operations {
                      *       "id": "018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f",
                      *       "project_id": "018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f",
                      *       "name": "New Checkout Flow",
+                     *       "description": "Rolls out the redesigned checkout flow.",
                      *       "key": "new-checkout-flow",
                      *       "variations": [
                      *         {
@@ -6926,6 +7401,7 @@ export interface operations {
                      *           "value": false
                      *         }
                      *       ],
+                     *       "tags": [],
                      *       "created_at": "2026-01-01T12:00:00Z",
                      *       "updated_at": "2026-01-01T12:00:00Z",
                      *       "archived_at": null
@@ -13084,9 +13560,11 @@ export interface operations {
                      *           "id": "018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f",
                      *           "project_id": "018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f",
                      *           "name": "Checkout Error Rate",
+                     *           "description": "Share of checkout attempts that fail.",
                      *           "key": "checkout-error-rate",
                      *           "aggregation_type": "rate",
                      *           "unit": "percent",
+                     *           "archived_at": null,
                      *           "created_at": "2026-01-01T12:00:00Z",
                      *           "updated_at": "2026-01-01T12:00:00Z"
                      *         }
@@ -13159,9 +13637,11 @@ export interface operations {
                      *       "id": "018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f",
                      *       "project_id": "018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f",
                      *       "name": "Checkout Error Rate",
+                     *       "description": "Share of checkout attempts that fail.",
                      *       "key": "checkout-error-rate",
                      *       "aggregation_type": "rate",
                      *       "unit": "percent",
+                     *       "archived_at": null,
                      *       "created_at": "2026-01-01T12:00:00Z",
                      *       "updated_at": "2026-01-01T12:00:00Z"
                      *     }
@@ -13266,9 +13746,11 @@ export interface operations {
                      *       "id": "018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f",
                      *       "project_id": "018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f",
                      *       "name": "Checkout Error Rate",
+                     *       "description": "Share of checkout attempts that fail.",
                      *       "key": "checkout-error-rate",
                      *       "aggregation_type": "rate",
                      *       "unit": "percent",
+                     *       "archived_at": null,
                      *       "created_at": "2026-01-01T12:00:00Z",
                      *       "updated_at": "2026-01-01T12:00:00Z"
                      *     }
@@ -14628,6 +15110,147 @@ export interface operations {
             };
         };
     };
+    initiateSocialLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to Google's authorization endpoint. */
+            302: {
+                headers: {
+                    /** @description `growth_ops_social_login_binding=<secret>; Path=/v1/auth/social/google/callback; Max-Age=600; HttpOnly; SameSite=Lax`, plus `Secure` outside development. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No platform Google OAuth client is configured for this deployment. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "social_login_not_configured",
+                     *         "message": "Google social login is not configured for this deployment.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    completeSocialLogin: {
+        parameters: {
+            query: {
+                state: string;
+                code: string;
+            };
+            header?: {
+                /** @description An Accept value preferring `text/html` selects the browser response (cookie + redirect) instead of the JSON body. */
+                Accept?: string;
+            };
+            path?: never;
+            cookie: {
+                /** @description The browser-binding secret issued when the login was started. A callback that does not present it is refused before any authorization code is exchanged. */
+                growth_ops_social_login_binding: string;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Login completed for a non-browser caller. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "member_id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "organization_id": "018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "email": "person@example.com",
+                     *       "session_token": "sess_018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f.7f3a9c1b2e4d6a8f0c1b3d5e7f9a1c3e",
+                     *       "expires_at": "2026-01-02T12:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CompleteLoginResponse"];
+                };
+            };
+            /** @description Login completed for a browser. The session is set as an HttpOnly cookie and the browser is redirected into the console — either "/projects", or "/welcome" with the auto-provisioned Project and Environment ids when this was a brand-new self-service signup. */
+            302: {
+                headers: {
+                    /** @description The console landing path. */
+                    Location?: string;
+                    /** @description `growth_ops_session=<token>; Path=/; HttpOnly; SameSite=Lax`, plus `Secure` outside development and `Domain` when configured. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The callback is invalid, expired, or was already completed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "callback_invalid",
+                     *         "message": "The login callback is invalid or has expired.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No platform Google OAuth client is configured for this deployment. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "social_login_not_configured",
+                     *         "message": "Google social login is not configured for this deployment.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Google identity's email already belongs to a different Member — either another Organization entirely, or an unverified Google email colliding with an existing account — so no session was issued. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "social_email_already_taken",
+                     *         "message": "This email already belongs to another account. Verify your Google email or sign in through your organization instead.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     completeLogin: {
         parameters: {
             query: {
@@ -15497,7 +16120,11 @@ export interface operations {
                      *       },
                      *       "roles": [
                      *         "admin"
-                     *       ]
+                     *       ],
+                     *       "terms": {
+                     *         "current_version": "1.0.0",
+                     *         "acceptance_required": false
+                     *       }
                      *     }
                      */
                     "application/json": components["schemas"]["CurrentSessionResponse"];
@@ -15514,6 +16141,87 @@ export interface operations {
                      *       "error": {
                      *         "code": "session_invalid",
                      *         "message": "A valid bearer session token is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    acceptTerms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "terms_version": "1.0.0"
+                 *     }
+                 */
+                "application/json": components["schemas"]["AcceptTermsRequest"];
+            };
+        };
+        responses: {
+            /** @description The acceptance was recorded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body was undecodable or named no version. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "member_validation_error",
+                     *         "message": "member: terms version is required",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The presented session token is missing, invalid, expired or revoked, or the Member it resolves to has been disabled. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "session_invalid",
+                     *         "message": "A valid bearer session token is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The version named is not the one in force (`terms_version_mismatch` — reload and read the current document), or this deployment publishes no terms at all (`terms_acceptance_not_required`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "terms_version_mismatch",
+                     *         "message": "The terms version you accepted is no longer the one in force. Reload and read the current terms.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -15566,7 +16274,8 @@ export interface operations {
                      *         }
                      *       ],
                      *       "limit": 100,
-                     *       "offset": 0
+                     *       "offset": 0,
+                     *       "has_more": false
                      *     }
                      */
                     "application/json": components["schemas"]["AuditEventList"];
@@ -16929,6 +17638,204 @@ export interface operations {
             };
         };
     };
+    cancelOrganizationSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The now-canceled subscription. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationSubscription"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold billing:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The requested Organization is not the caller's own, or has no Subscription at all. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The subscription is still on the platform's default $0 plan — there is no paid cycle to cancel. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "billing_nothing_to_cancel",
+                     *         "message": "This subscription has no paid plan to cancel.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createOrganizationSetupIntent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A client secret for the frontend to confirm against the payment gateway. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "client_secret": "seti_1NxSample_secret_abc123"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CreateSetupIntentResponse"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold billing:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The requested Organization is not the caller's own. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateOrganizationBillingDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "billing_email": "billing@example.com",
+                 *       "organization_legal_name": "Acme Inc",
+                 *       "country": "BR",
+                 *       "tax_id": "12345678000199"
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateBillingDetailsRequest"];
+            };
+        };
+        responses: {
+            /** @description The billing details were updated. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error, malformed JSON body, or a missing required field. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "billing_validation_error",
+                     *         "message": "billing_email is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold billing:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The requested Organization is not the caller's own. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getOrganizationPaymentMethod: {
         parameters: {
             query?: never;
@@ -17288,6 +18195,144 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getEntitlementStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                resource_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The resource's current entitlement status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntitlementStatus"];
+                };
+            };
+            /** @description resource_key does not name a resource this platform grants entitlements for. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "entitlement_validation_error",
+                     *         "message": "resource_key is not a recognized resource.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The requested Organization is not the caller's own. Deliberately indistinguishable from an unknown Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    finalizeEntitlementSelection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                resource_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinalizeEntitlementSelectionRequest"];
+            };
+        };
+        responses: {
+            /** @description The selection was recorded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error, malformed JSON body, or a kept_resource_ids count that does not match the resource's post-downgrade limit. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold entitlements:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The requested Organization is not the caller's own, or there is no open downgrade or grant for this resource. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The selection window for this downgrade is closed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "entitlement_selection_closed",
+                     *         "message": "The selection window for this downgrade is closed.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -18031,6 +19076,69 @@ export interface operations {
             };
         };
     };
+    listOrganizationsOnUnservedRegions: {
+        parameters: {
+            query?: {
+                /** @description Page size. Defaults to 50 when absent, zero, or above the maximum of 200. */
+                limit?: number;
+                /** @description Rows to skip in the oldest-first ordering. Defaults to 0. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organizations declaring a region the deployment does not serve. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "organizations": [],
+                     *       "total": 0,
+                     *       "limit": 50,
+                     *       "offset": 0,
+                     *       "served_regions": [
+                     *         "us"
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["UnservedRegionOrganizationsResponse"];
+                };
+            };
+            /** @description A malformed `limit` or `offset`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `residency:review`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listStaffSupportTickets: {
         parameters: {
             query?: {
@@ -18421,6 +19529,231 @@ export interface operations {
             };
             /** @description Not found. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    requestErasure: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request was recorded and acknowledged, with the stated processing window. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErasureRequest"];
+                };
+            };
+            /** @description No session was presented, or the presented one is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getCurrentErasureRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The Member's own erasure request. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErasureRequest"];
+                };
+            };
+            /** @description No session was presented, or the presented one is invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Member has no erasure request that still names them. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    recordContactErasureRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordContactErasureRequest"];
+            };
+        };
+        responses: {
+            /** @description The request was recorded and acknowledged. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErasureRequest"];
+                };
+            };
+            /** @description No contact address was supplied. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `privacy:erase`, or a cookie-authenticated write arrived from an unapproved origin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getErasureRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                erasure_request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The erasure request and its outcome report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErasureRequest"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `privacy:erase`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    processErasureRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                erasure_request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The processed request, carrying the per-store outcomes and the rendered report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErasureRequest"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `privacy:erase`, or a cookie-authenticated write arrived from an unapproved origin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request has already been processed. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
