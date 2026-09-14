@@ -1,5 +1,14 @@
 # @rollfuse/contracts
 
+## 0.8.2
+
+### Patch Changes
+
+- 5445188: Sync the mirrored `openapi.yaml` and regenerate types. Adds `AuditEvent`'s
+  `actor_type`/`actor_id` fields and the `predates_actor_capture` marker
+  (`complete-governance-surface` sections 1-2), plus an `actor_type`/
+  `actor_id` filter on the audit listing and export endpoints.
+
 ## 0.8.1
 
 ### Patch Changes
