@@ -1468,6 +1468,29 @@
       }
     }
   },
+  "PutEnvironmentFlagConfigResponse": {
+    "type": "object",
+    "description": "Discriminated by status: \"applied\" nests the resulting environment_flag_config (the write took effect immediately, as before governance change control existed); \"pending_approval\" instead carries pending_approval_request_id -- the owning Environment requires approval and the change is held rather than applied.",
+    "required": [
+      "status",
+      "environment_flag_config"
+    ],
+    "properties": {
+      "status": {
+        "type": "string",
+        "enum": [
+          "applied",
+          "pending_approval"
+        ]
+      },
+      "pending_approval_request_id": {
+        "type": "string"
+      },
+      "environment_flag_config": {
+        "$ref": "#/components/schemas/EnvironmentFlagConfig"
+      }
+    }
+  },
   "EnvironmentFlagConfigSummary": {
     "type": "object",
     "required": [
@@ -3338,11 +3361,22 @@
     "required": [
       "email"
     ],
-    "description": "Carries the invited email and nothing else. There is deliberately no organization_id field: an invite is always issued into the caller's own session-bound Organization, so the body cannot express a cross-tenant issuance. Unknown fields are rejected.",
+    "description": "Carries the invited email and the role they will hold on acceptance. There is deliberately no organization_id field: an invite is always issued into the caller's own session-bound Organization, so the body cannot express a cross-tenant issuance. Unknown fields are rejected.",
     "properties": {
       "email": {
         "type": "string",
         "format": "email"
+      },
+      "role": {
+        "type": "string",
+        "enum": [
+          "admin",
+          "member",
+          "read_only",
+          "feature_delivery",
+          "billing_administration"
+        ],
+        "description": "The role the invitee will hold once this invite is accepted. Omitted or empty defaults to the base \"member\" role. Conferring any other role requires the inviter to themselves hold roles:manage; conferring one that includes role administration follows the same approval rule as granting it directly."
       }
     }
   },
@@ -3351,6 +3385,7 @@
     "required": [
       "id",
       "email",
+      "role",
       "status",
       "inviter_member_id",
       "created_at",
@@ -3366,6 +3401,16 @@
       "email": {
         "type": "string",
         "format": "email"
+      },
+      "role": {
+        "type": "string",
+        "enum": [
+          "admin",
+          "member",
+          "read_only",
+          "feature_delivery",
+          "billing_administration"
+        ]
       },
       "status": {
         "type": "string",
@@ -3434,7 +3479,11 @@
         "type": "string"
       },
       "email": {
+        "type": "string"
+      },
+      "pending_approval_request_id": {
         "type": "string",
+        "description": "Set only when the invite's role included role administration: the Member above is provisioned, but the role grant itself awaits a second member's approval.",
         "format": "email"
       }
     }
@@ -3791,7 +3840,10 @@
         "type": "string",
         "enum": [
           "admin",
-          "member"
+          "member",
+          "read_only",
+          "feature_delivery",
+          "billing_administration"
         ]
       }
     }
@@ -3820,7 +3872,10 @@
         "type": "string",
         "enum": [
           "admin",
-          "member"
+          "member",
+          "read_only",
+          "feature_delivery",
+          "billing_administration"
         ]
       },
       "status": {
@@ -3837,6 +3892,31 @@
       "revoked_at": {
         "type": "string",
         "format": "date-time"
+      }
+    }
+  },
+  "RoleCatalogEntry": {
+    "type": "object",
+    "required": [
+      "role",
+      "permissions"
+    ],
+    "properties": {
+      "role": {
+        "type": "string",
+        "enum": [
+          "admin",
+          "member",
+          "read_only",
+          "feature_delivery",
+          "billing_administration"
+        ]
+      },
+      "permissions": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
       }
     }
   },
@@ -3864,12 +3944,12 @@
   },
   "ApprovalRequest": {
     "type": "object",
+    "description": "Kind discriminates which fields are meaningful: \"role_grant\" populates target_member_id and role; \"environment_flag_config_change\" populates environment_id and feature_flag_id instead -- see complete-governance-surface's \"Let approvals gate production change.\"",
     "required": [
       "id",
       "organization_id",
-      "target_member_id",
+      "kind",
       "requested_by_member_id",
-      "role",
       "status",
       "created_at"
     ],
@@ -3880,10 +3960,14 @@
       "organization_id": {
         "type": "string"
       },
-      "target_member_id": {
-        "type": "string"
+      "kind": {
+        "type": "string",
+        "enum": [
+          "role_grant",
+          "environment_flag_config_change"
+        ]
       },
-      "requested_by_member_id": {
+      "target_member_id": {
         "type": "string"
       },
       "role": {
@@ -3891,6 +3975,15 @@
         "enum": [
           "admin"
         ]
+      },
+      "environment_id": {
+        "type": "string"
+      },
+      "feature_flag_id": {
+        "type": "string"
+      },
+      "requested_by_member_id": {
+        "type": "string"
       },
       "status": {
         "type": "string",
@@ -3901,6 +3994,9 @@
         ]
       },
       "decided_by_member_id": {
+        "type": "string"
+      },
+      "decision_reason": {
         "type": "string"
       },
       "created_at": {
