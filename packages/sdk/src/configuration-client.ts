@@ -3,6 +3,7 @@ import { applyTraceHeaders, resolveTraceHeaders } from "@rollfuse/evaluation-cor
 
 import { CredentialRejectedError, InitializationTimeoutError } from "./errors.js";
 import { type PooledFetch, createPooledFetch } from "./pooled-fetch.js";
+import { safeInvoke } from "./safe-invoke.js";
 
 /** Default interval between successful-poll refreshes. */
 const DEFAULT_REFRESH_INTERVAL_MS = 30_000;
@@ -180,10 +181,26 @@ export class ConfigurationClient {
         this.readyReject(new InitializationTimeoutError(this.initTimeoutMs));
       }, this.initTimeoutMs);
       this.initTimer.unref?.();
-      void this.pollLoop();
+      this.runPollLoop();
     }
 
     return this.readyPromise;
+  }
+
+  /**
+   * Starts `pollLoop()` without awaiting it (it runs for the client's
+   * whole lifetime), with a terminal `.catch()` — sdk-conformance's "A
+   * background loop rejects" scenario: `pollLoop`/`attemptFetch` should
+   * never actually reject (every path is already contained), but an
+   * unawaited async call with no handler at all becomes an unhandled
+   * rejection, which by default terminates a Node process, if a future
+   * change ever reintroduces one. This is the backstop for that class of
+   * regression, not an expected path.
+   */
+  private runPollLoop(): void {
+    this.pollLoop().catch((error: unknown) => {
+      safeInvoke(this.onConfigRefreshError, error);
+    });
   }
 
   /** Stops polling. Safe to call whether or not `start()` was ever called. */
@@ -244,7 +261,7 @@ export class ConfigurationClient {
     const delay = succeeded ? this.refreshIntervalMs : this.nextBackoff();
 
     this.timer = setTimeout(() => {
-      void this.pollLoop();
+      this.runPollLoop();
     }, delay);
     this.timer.unref?.();
   }
@@ -270,8 +287,13 @@ export class ConfigurationClient {
         const error = new CredentialRejectedError(response.status);
 
         this.terminallyFailed = true;
-        this.onConfigRefreshError?.(error);
+        // Settle readiness before invoking any integrator callback (task
+        // 3.2's ordering), and go through safeInvoke rather than calling
+        // the callback directly (task 3.1): a throwing callback here must
+        // not be caught by this method's own outer catch below and
+        // misreported as a second, different failure.
         this.readyReject(error);
+        safeInvoke(this.onConfigRefreshError, error);
 
         return false;
       }
@@ -289,12 +311,19 @@ export class ConfigurationClient {
       this.config = body;
       this.lastFetchedAt = Date.now();
       this.backoffMs = BASE_BACKOFF_MS;
-      this.onConfigRefreshed?.(body.version);
+      // Readiness resolves before the integrator's own callback runs
+      // (sdk-conformance's "Readiness resolves before callbacks run"
+      // scenario), and goes through safeInvoke: previously, a throwing
+      // onConfigRefreshed escaped into this method's own catch below,
+      // which then reported an objectively successful fetch as a failure
+      // and left start() unresolved — exactly the "A success callback
+      // throws" scenario this now satisfies.
       this.readyResolve();
+      safeInvoke(this.onConfigRefreshed, body.version);
 
       return true;
     } catch (error) {
-      this.onConfigRefreshError?.(error);
+      safeInvoke(this.onConfigRefreshError, error);
 
       return false;
     }

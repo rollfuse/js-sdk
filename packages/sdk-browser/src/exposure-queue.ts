@@ -1,6 +1,8 @@
 import type { ExposureEventSubmission } from "@rollfuse/contracts";
 import { applyTraceHeaders, resolveTraceHeaders } from "@rollfuse/evaluation-core";
 
+import { safeInvoke } from "./safe-invoke.js";
+
 const DEFAULT_CAPACITY = 1_000;
 /**
  * Smaller than `@rollfuse/sdk-js`'s server-side defaults (100/5000ms): a
@@ -78,8 +80,22 @@ export class ExposureQueue {
     }
 
     this.timer = setInterval(() => {
-      void this.flush();
+      this.runFlush();
     }, this.flushIntervalMs);
+  }
+
+  /**
+   * Starts `flush()` without awaiting it, with a terminal `.catch()` —
+   * sdk-conformance's "A background loop rejects" scenario. `flush()`
+   * should never actually reject (its own try/catch already contains
+   * every failure path), but an unawaited async call with no handler at
+   * all becomes an unhandled rejection if a future change ever
+   * reintroduces one; this is that backstop.
+   */
+  private runFlush(): void {
+    this.flush().catch((error: unknown) => {
+      safeInvoke(this.onExposureSubmitError, error);
+    });
   }
 
   /** Stops the periodic flush timer without flushing. */
@@ -97,7 +113,7 @@ export class ExposureQueue {
    */
   enqueue(event: QueuedExposure): void {
     if (this.queue.length >= this.capacity) {
-      this.onExposureDropped?.(1);
+      safeInvoke(this.onExposureDropped, 1);
 
       return;
     }
@@ -113,7 +129,7 @@ export class ExposureQueue {
     });
 
     if (this.queue.length >= this.batchSize) {
-      void this.flush();
+      this.runFlush();
     }
   }
 
@@ -147,7 +163,7 @@ export class ExposureQueue {
         throw new Error(`POST /v1/exposure-events returned status ${response.status}`);
       }
     } catch (error) {
-      this.onExposureSubmitError?.(error);
+      safeInvoke(this.onExposureSubmitError, error);
     }
   }
 

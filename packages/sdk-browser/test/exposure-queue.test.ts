@@ -200,4 +200,53 @@ describe("ExposureQueue", () => {
 
     vi.unstubAllGlobals();
   });
+
+  it("a throwing onExposureDropped does not propagate out of enqueue() (task 3.1)", () => {
+    const queue = new ExposureQueue({
+      baseUrl: "http://api.test",
+      publicCredential: "pub_cred",
+      capacity: 1,
+      onExposureDropped: () => {
+        throw new Error("integrator's dropped-exposure callback itself throws");
+      },
+    });
+
+    queue.enqueue(sampleEvent);
+
+    expect(() => queue.enqueue(sampleEvent)).not.toThrow();
+  });
+
+  it("a throwing onExposureSubmitError does not stop the background flush timer from continuing on schedule (task 3.1, 3.3)", async () => {
+    // See parity.test.ts's own note: this package's tests carry no
+    // @types/node/`process`, so unlike @rollfuse/sdk-js's equivalent test
+    // (which asserts directly via `process.on("unhandledRejection")`),
+    // this proves the same property behaviorally — the flush timer keeps
+    // firing on schedule despite the callback throwing on every attempt —
+    // while relying on vitest's own run-level unhandled-rejection
+    // detection (confirmed: it fails `npm test`'s exit code regardless of
+    // per-test assertions) as the backstop against a real regression.
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ error: "boom" }, 500));
+
+    const queue = new ExposureQueue({
+      baseUrl: "http://api.test",
+      publicCredential: "pub_cred",
+      flushIntervalMs: 5_000,
+      fetchImpl,
+      onExposureSubmitError: () => {
+        throw new Error("integrator's submit-error callback itself throws");
+      },
+    });
+
+    queue.start();
+    queue.enqueue(sampleEvent);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    queue.enqueue(sampleEvent);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    queue.stop();
+  });
 });

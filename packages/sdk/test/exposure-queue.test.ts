@@ -134,4 +134,55 @@ describe("ExposureQueue", () => {
 
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it("a throwing onExposureDropped does not propagate out of enqueue() (task 3.1)", () => {
+    const queue = new ExposureQueue({
+      baseUrl: "http://api.test",
+      credential: "cred",
+      capacity: 1,
+      onExposureDropped: () => {
+        throw new Error("integrator's dropped-exposure callback itself throws");
+      },
+    });
+
+    queue.enqueue(sampleEvent);
+
+    // The queue is now at capacity; this second enqueue() triggers the
+    // drop path and its (throwing) callback, synchronously, in the same
+    // call frame evaluate() would be in — this must not throw back into
+    // evaluate()'s own caller.
+    expect(() => queue.enqueue(sampleEvent)).not.toThrow();
+  });
+
+  it("a throwing onExposureSubmitError does not produce an unhandled rejection from the background flush timer (task 3.1, 3.3)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ error: "boom" }, 500));
+    const unhandledRejections: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandledRejections.push(reason);
+
+    process.on("unhandledRejection", onUnhandled);
+
+    try {
+      const queue = new ExposureQueue({
+        baseUrl: "http://api.test",
+        credential: "cred",
+        flushIntervalMs: 5_000,
+        fetchImpl,
+        onExposureSubmitError: () => {
+          throw new Error("integrator's submit-error callback itself throws");
+        },
+      });
+
+      queue.start();
+      queue.enqueue(sampleEvent);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(unhandledRejections).toEqual([]);
+
+      queue.stop();
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
 });
