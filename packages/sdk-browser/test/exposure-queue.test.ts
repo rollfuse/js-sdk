@@ -460,4 +460,60 @@ describe("ExposureQueue", () => {
 
     queue.stop();
   });
+
+  it("chunks a flush exceeding the platform's declared batch limit into multiple requests, none oversized (task 9.4)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ accepted: 1 }));
+
+    const queue = new ExposureQueue({
+      baseUrl: "http://api.test",
+      publicCredential: "pub_cred",
+      batchSize: 1_000_000, // never auto-flush during this test; flush() is called explicitly
+      fetchImpl,
+    });
+
+    for (let i = 0; i < 250; i++) {
+      queue.enqueue({ ...sampleEvent, subjectKey: `user_${i}` });
+    }
+
+    await queue.flush();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(3); // 100 + 100 + 50
+
+    let totalEvents = 0;
+
+    for (const call of fetchImpl.mock.calls) {
+      const body = JSON.parse((call[1] as RequestInit).body as string);
+
+      expect(body.events.length).toBeLessThanOrEqual(100);
+      totalEvents += body.events.length;
+    }
+
+    expect(totalEvents).toBe(250);
+  });
+
+  it("one chunk failing to submit doesn't prevent the others from being attempted (task 9.4)", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "boom" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ accepted: 50 }));
+
+    const onExposureSubmitError = vi.fn();
+
+    const queue = new ExposureQueue({
+      baseUrl: "http://api.test",
+      publicCredential: "pub_cred",
+      batchSize: 1_000_000,
+      fetchImpl,
+      onExposureSubmitError,
+    });
+
+    for (let i = 0; i < 150; i++) {
+      queue.enqueue({ ...sampleEvent, subjectKey: `user_${i}` });
+    }
+
+    await queue.flush();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(onExposureSubmitError).toHaveBeenCalledTimes(1);
+  });
 });

@@ -4,12 +4,21 @@ import { applyTraceHeaders, resolveTraceHeaders } from "@rollfuse/evaluation-cor
 import { CredentialRejectedError, InitializationTimeoutError } from "./errors.js";
 import { safeInvoke } from "./safe-invoke.js";
 
-/** Default interval between successful-poll refreshes. */
+/** Default interval between successful-poll refreshes, used only when neither an explicit refreshIntervalMs nor the platform's advised poll_interval_seconds is available (task 9.3). */
 const DEFAULT_REFRESH_INTERVAL_MS = 30_000;
 /** Starting delay before retrying a failed poll. */
 const BASE_BACKOFF_MS = 1_000;
 /** Upper bound on the capped-exponential retry backoff. */
 const MAX_BACKOFF_MS = 30_000;
+/**
+ * Fraction of extra random delay added on top of every poll/retry delay
+ * (task 9.2): spreads out many clients' schedules that would otherwise
+ * synchronize (e.g. many processes started around the same time), per
+ * sdk-conformance's "Polling Revalidates And Does Not Synchronize"
+ * requirement. Always adds, never subtracts, so a client never polls less
+ * frequently than its own configured/advised interval.
+ */
+const JITTER_RATIO = 0.2;
 /**
  * Default bound on `start()`'s returned Promise, per sdk-conformance's
  * "Initialization Completes Or Fails Within A Bounded Time" requirement.
@@ -31,7 +40,14 @@ export interface ConfigurationClientOptions {
   baseUrl: string;
   /** The Public Credential's bearer token. */
   publicCredential: string;
-  /** Interval between successful-poll refreshes, in milliseconds. */
+  /**
+   * Interval between successful-poll refreshes, in milliseconds. When
+   * unset, the platform's advised `poll_interval_seconds` (from the most
+   * recently fetched Configuration) is used in preference to this
+   * class's own hardcoded default, per sdk-conformance's "The platform
+   * advises an interval" scenario (task 9.3) — an explicit value here
+   * always wins over either.
+   */
   refreshIntervalMs?: number;
   /**
    * If set, `isStale()` reports true once this many milliseconds have
@@ -89,7 +105,8 @@ export interface ConfigurationClientOptions {
 export class ConfigurationClient {
   private readonly baseUrl: string;
   private readonly publicCredential: string;
-  private readonly refreshIntervalMs: number;
+  /** Undefined unless the integrator explicitly configured it — see currentRefreshIntervalMs's own doc comment for the resolution order. */
+  private readonly explicitRefreshIntervalMs: number | undefined;
   private readonly maxConfigAgeMs: number | undefined;
   private readonly fetchImpl: typeof fetch;
   private readonly onConfigRefreshed: ((version: number) => void) | undefined;
@@ -97,6 +114,8 @@ export class ConfigurationClient {
 
   private config: Configuration | undefined;
   private lastFetchedAt: number | undefined;
+  /** The last GET /v1/config response's ETag, verbatim (quotes included) — echoed back via If-None-Match on the next poll (task 9.1). Undefined until the first successful (non-304) fetch. */
+  private etag: string | undefined;
   private backoffMs = BASE_BACKOFF_MS;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private initTimer: ReturnType<typeof setTimeout> | undefined;
@@ -126,7 +145,7 @@ export class ConfigurationClient {
   constructor(options: ConfigurationClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.publicCredential = options.publicCredential;
-    this.refreshIntervalMs = options.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS;
+    this.explicitRefreshIntervalMs = options.refreshIntervalMs;
     this.maxConfigAgeMs = options.maxConfigAgeMs;
     this.initTimeoutMs = options.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
@@ -278,11 +297,33 @@ export class ConfigurationClient {
       return;
     }
 
-    const delay = succeeded ? this.refreshIntervalMs : this.nextBackoff();
+    const baseDelay = succeeded ? this.currentRefreshIntervalMs() : this.nextBackoff();
+    const delay = withJitter(baseDelay);
 
     this.timer = setTimeout(() => {
       this.runPollLoop();
     }, delay);
+  }
+
+  /**
+   * Resolution order (task 9.3): an explicitly configured
+   * `refreshIntervalMs` always wins; otherwise the platform's advised
+   * `poll_interval_seconds` (from the most recently fetched
+   * Configuration, including one only confirmed unchanged via a 304)
+   * wins over this class's own hardcoded default.
+   */
+  private currentRefreshIntervalMs(): number {
+    if (this.explicitRefreshIntervalMs !== undefined) {
+      return this.explicitRefreshIntervalMs;
+    }
+
+    const advisedSeconds = this.config?.poll_interval_seconds;
+
+    if (advisedSeconds !== undefined && advisedSeconds > 0) {
+      return advisedSeconds * 1000;
+    }
+
+    return DEFAULT_REFRESH_INTERVAL_MS;
   }
 
   private nextBackoff(): number {
@@ -296,6 +337,15 @@ export class ConfigurationClient {
     try {
       const trace = await resolveTraceHeaders();
       const headers = applyTraceHeaders({ Authorization: `Bearer ${this.publicCredential}` }, trace);
+
+      // Presents the last-seen validator (task 9.1): the platform
+      // revalidates against it and responds 304 with no body if the
+      // Configuration hasn't changed, instead of re-transferring one that
+      // would just replace an identical cache.
+      if (this.etag !== undefined) {
+        headers["If-None-Match"] = this.etag;
+      }
+
       const response = await this.fetchImpl(`${this.baseUrl}/v1/config`, {
         headers,
         signal: AbortSignal.timeout(this.requestTimeoutMs),
@@ -320,6 +370,18 @@ export class ConfigurationClient {
         return false;
       }
 
+      if (response.status === 304) {
+        // The platform confirmed the cached Configuration is still
+        // current (task 9.1): a successful poll in every sense that
+        // matters for scheduling/staleness, but with nothing to replace
+        // the cache with and nothing to notify onConfigRefreshed about.
+        this.lastFetchedAt = Date.now();
+        this.backoffMs = BASE_BACKOFF_MS;
+        this.readyResolve();
+
+        return true;
+      }
+
       if (!response.ok) {
         throw new Error(`GET /v1/config returned status ${response.status}`);
       }
@@ -333,6 +395,7 @@ export class ConfigurationClient {
       this.config = body;
       this.lastFetchedAt = Date.now();
       this.backoffMs = BASE_BACKOFF_MS;
+      this.etag = response.headers.get("etag") ?? undefined;
       // Readiness resolves before the integrator's own callback runs
       // (sdk-conformance's "Readiness resolves before callbacks run"
       // scenario), and goes through safeInvoke: previously, a throwing
@@ -470,4 +533,14 @@ function isValidRolloutSplit(value: unknown): boolean {
   const candidate = value as Record<string, unknown>;
 
   return typeof candidate.variation_key === "string" && typeof candidate.percentage === "number";
+}
+
+/**
+ * Adds up to JITTER_RATIO extra random delay on top of baseMs (task 9.2),
+ * so many clients' poll/retry schedules spread out rather than
+ * synchronizing. Always >= baseMs: never polls less frequently than the
+ * caller's own configured/advised interval intended.
+ */
+function withJitter(baseMs: number): number {
+  return baseMs + baseMs * JITTER_RATIO * Math.random();
 }

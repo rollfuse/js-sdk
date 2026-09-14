@@ -36,10 +36,16 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // Neutralizes task 9.2's jitter (configuration-client.ts's withJitter)
+  // so this file's exact-interval advanceTimersByTimeAsync(...)
+  // assertions still hold — see configuration-client.test.ts's identical
+  // setup for the full rationale.
+  vi.spyOn(Math, "random").mockReturnValue(0);
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("RollfusePublicClient", () => {
