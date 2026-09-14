@@ -1,6 +1,7 @@
 import type { Configuration } from "@rollfuse/contracts";
 import { applyTraceHeaders, resolveTraceHeaders } from "@rollfuse/evaluation-core";
 
+import { CredentialRejectedError, InitializationTimeoutError } from "./errors.js";
 import { type PooledFetch, createPooledFetch } from "./pooled-fetch.js";
 
 /** Default interval between successful-poll refreshes. */
@@ -13,6 +14,15 @@ const MAX_BACKOFF_MS = 30_000;
 const DEFAULT_HEADERS_TIMEOUT_MS = 10_000;
 const DEFAULT_BODY_TIMEOUT_MS = 10_000;
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
+/**
+ * Default bound on `start()`'s returned Promise, per sdk-conformance's
+ * "Initialization Completes Or Fails Within A Bounded Time" requirement.
+ * Comfortably above one full request-timeout-plus-first-retry
+ * (DEFAULT_HEADERS_TIMEOUT_MS + BASE_BACKOFF_MS) so a single transient
+ * failure inside the bound still has room to succeed on retry, per the
+ * "A transient failure inside the bound" scenario.
+ */
+const DEFAULT_INIT_TIMEOUT_MS = 15_000;
 
 export interface ConfigurationClientOptions {
   /** The platform API's base URL, e.g. "https://api.rollfuse.com". */
@@ -29,6 +39,15 @@ export interface ConfigurationClientOptions {
    * an integrator explicitly opts into a staleness bound.
    */
   maxConfigAgeMs?: number;
+  /**
+   * Bounds `start()`'s returned Promise: it rejects with
+   * `InitializationTimeoutError` if no fetch has succeeded within this
+   * many milliseconds of the first `start()` call. Background polling is
+   * not stopped by this — a later successful fetch still populates the
+   * cache for subsequent `evaluate()` calls — only the integrator's own
+   * await on `start()` is bounded. Default 15s.
+   */
+  initTimeoutMs?: number;
   /**
    * Injectable for tests; defaults to an undici-pool-backed fetch bound to
    * baseUrl, with `headersTimeoutMs`/`bodyTimeoutMs`/`connectTimeoutMs`
@@ -74,9 +93,16 @@ export class ConfigurationClient {
   private lastFetchedAt: number | undefined;
   private backoffMs = BASE_BACKOFF_MS;
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private initTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly initTimeoutMs: number;
   private started = false;
   private stopped = false;
+  /** True once initialization has terminally failed (a rejected credential): pollLoop stops scheduling further retries, since retrying can only reproduce the same rejection. */
+  private terminallyFailed = false;
+  /** True once the ready Promise has settled (resolved or rejected), so a later settlement attempt (e.g. a success after an init-timeout rejection) is a harmless no-op rather than an error. */
+  private readySettled = false;
   private readyResolve!: () => void;
+  private readyReject!: (error: Error) => void;
   private readonly readyPromise: Promise<void>;
 
   constructor(options: ConfigurationClientOptions) {
@@ -84,6 +110,7 @@ export class ConfigurationClient {
     this.credential = options.credential;
     this.refreshIntervalMs = options.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS;
     this.maxConfigAgeMs = options.maxConfigAgeMs;
+    this.initTimeoutMs = options.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;
 
     if (options.fetchImpl) {
       this.fetchImpl = options.fetchImpl;
@@ -101,20 +128,58 @@ export class ConfigurationClient {
     this.onConfigRefreshed = options.onConfigRefreshed;
     this.onConfigRefreshError = options.onConfigRefreshError;
 
-    this.readyPromise = new Promise<void>((resolve) => {
-      this.readyResolve = resolve;
+    this.readyPromise = new Promise<void>((resolve, reject) => {
+      this.readyResolve = () => {
+        if (this.readySettled) {
+          return;
+        }
+
+        this.readySettled = true;
+        this.clearInitTimer();
+        resolve();
+      };
+      this.readyReject = (error: Error) => {
+        if (this.readySettled) {
+          return;
+        }
+
+        this.readySettled = true;
+        this.clearInitTimer();
+        reject(error);
+      };
     });
+
+    // A rejected Promise that nobody attaches a handler to (a non-blocking
+    // `start()` call, per the "Initialization is configured to be
+    // non-blocking" scenario) would otherwise surface as an unhandled
+    // rejection; harden-sdk-runtime task 3 covers integrator-callback
+    // isolation generally, but this specific case is this class's own
+    // responsibility since readyPromise is constructed here.
+    this.readyPromise.catch(() => undefined);
+  }
+
+  private clearInitTimer(): void {
+    if (this.initTimer !== undefined) {
+      clearTimeout(this.initTimer);
+      this.initTimer = undefined;
+    }
   }
 
   /**
    * Begins polling. Returns a Promise resolving the first time a poll
    * succeeds (immediately, if one already has by the time this is
-   * called). Safe to call more than once; only the first call starts the
-   * polling loop.
+   * called), or rejecting once `initTimeoutMs` elapses without a success,
+   * or immediately if the platform rejects the credential. Safe to call
+   * more than once; only the first call starts the polling loop and the
+   * init-timeout bound.
    */
   start(): Promise<void> {
     if (!this.started) {
       this.started = true;
+      this.initTimer = setTimeout(() => {
+        this.readyReject(new InitializationTimeoutError(this.initTimeoutMs));
+      }, this.initTimeoutMs);
+      this.initTimer.unref?.();
       void this.pollLoop();
     }
 
@@ -124,6 +189,7 @@ export class ConfigurationClient {
   /** Stops polling. Safe to call whether or not `start()` was ever called. */
   stop(): void {
     this.stopped = true;
+    this.clearInitTimer();
 
     if (this.timer !== undefined) {
       clearTimeout(this.timer);
@@ -170,11 +236,12 @@ export class ConfigurationClient {
     }
 
     const succeeded = await this.attemptFetch();
-    const delay = succeeded ? this.refreshIntervalMs : this.nextBackoff();
 
-    if (this.stopped) {
+    if (this.stopped || this.terminallyFailed) {
       return;
     }
+
+    const delay = succeeded ? this.refreshIntervalMs : this.nextBackoff();
 
     this.timer = setTimeout(() => {
       void this.pollLoop();
@@ -194,6 +261,20 @@ export class ConfigurationClient {
       const trace = await resolveTraceHeaders();
       const headers = applyTraceHeaders({ Authorization: `Bearer ${this.credential}` }, trace);
       const response = await this.fetchImpl(`${this.baseUrl}/v1/config`, { headers });
+
+      if (response.status === 401 || response.status === 403) {
+        // Per sdk-conformance's "The credential is rejected" scenario:
+        // fails immediately and is never retried, since retrying can only
+        // ever reproduce the same rejection. terminallyFailed stops
+        // pollLoop from scheduling another attempt.
+        const error = new CredentialRejectedError(response.status);
+
+        this.terminallyFailed = true;
+        this.onConfigRefreshError?.(error);
+        this.readyReject(error);
+
+        return false;
+      }
 
       if (!response.ok) {
         throw new Error(`GET /v1/config returned status ${response.status}`);
