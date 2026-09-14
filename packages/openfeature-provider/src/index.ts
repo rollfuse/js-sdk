@@ -22,7 +22,9 @@ import type {
 import {
   FlagNotFoundError,
   GeneralError,
+  OpenFeatureEventEmitter,
   ProviderNotReadyError,
+  ServerProviderEvents,
   StandardResolutionReasons,
   TargetingKeyMissingError,
   TypeMismatchError,
@@ -43,20 +45,44 @@ import {
 export class RollfuseProvider implements Provider {
   readonly metadata = { name: "rollfuse" } as const;
   readonly runsOn = "server" as const;
+  /**
+   * Emits `PROVIDER_CONFIGURATION_CHANGED` whenever the wrapped client's
+   * Configuration changes (task 10.1). `PROVIDER_READY`/`PROVIDER_ERROR`
+   * need no wiring here: `@openfeature/server-sdk` emits them itself from
+   * `initialize()`'s own outcome (task 10.2) — see this class's own
+   * `initialize` doc comment.
+   */
+  readonly events = new OpenFeatureEventEmitter();
 
   readonly #client: RollfuseClient;
+  #unsubscribe: (() => void) | undefined;
 
   constructor(client: RollfuseClient) {
     this.#client = client;
   }
 
-  /** Starts the wrapped client, blocking until the first Configuration fetch succeeds. */
+  /**
+   * Starts the wrapped client, blocking until the first Configuration
+   * fetch succeeds or rejects. Subscribes to the client's own Configuration
+   * changes first, so a change that lands mid-`start()` (the first fetch
+   * itself) is never missed. `@openfeature/server-sdk` reports readiness
+   * accurately (task 10.2) from this method's own outcome alone —
+   * resolving fires `PROVIDER_READY`, rejecting fires `PROVIDER_ERROR` —
+   * with no separate `status` field for this provider to maintain (the
+   * SDK's own `CommonProvider.status` is deprecated for exactly this
+   * reason: "the SDK now maintains the provider's state").
+   */
   async initialize(): Promise<void> {
+    this.#unsubscribe = this.#client.subscribe(() => {
+      this.events.emit(ServerProviderEvents.ConfigurationChanged);
+    });
+
     await this.#client.start();
   }
 
-  /** Stops the wrapped client's background refresh and exposure-flush loops. */
+  /** Unsubscribes from the wrapped client and stops its background refresh and exposure-flush loops. */
   async onClose(): Promise<void> {
+    this.#unsubscribe?.();
     await this.#client.close();
   }
 
@@ -129,7 +155,7 @@ export class RollfuseProvider implements Provider {
       throw new TargetingKeyMissingError(message);
     }
 
-    const attributes = stringAttributes(context);
+    const attributes = stringAttributes(context, logger);
 
     let result;
 
@@ -195,15 +221,18 @@ function reasonFor(reason: string): string {
  * option expects (rule matching is strict string equality — see
  * `@rollfuse/sdk-js`'s own README), excluding `targetingKey` (already
  * consumed as the subject key) and any value that isn't already a
- * string. A non-string attribute (a number, boolean, nested object) is
- * excluded rather than coerced with `String(...)`, which would let e.g.
- * attribute values `"true"` (string) and `true` (boolean) match a rule
- * condition meant for only one of them. Returns `undefined` (not an
+ * string. A non-string attribute (a number, boolean, nested object)
+ * cannot be represented in rollfuse's attribute model, which is excluded
+ * rather than coerced with `String(...)` — that would let e.g. attribute
+ * values `"true"` (string) and `true` (boolean) match a rule condition
+ * meant for only one of them — and reported through `logger` (task 10.3:
+ * the diagnostic path for a context value the attribute model can't
+ * represent) rather than discarded silently. Returns `undefined` (not an
  * empty object) when there are no string attributes, so
  * `client.evaluate` isn't called with a needless empty `attributes`
  * option.
  */
-function stringAttributes(context: EvaluationContext): Record<string, string> | undefined {
+function stringAttributes(context: EvaluationContext, logger: Logger): Record<string, string> | undefined {
   const attrs: Record<string, string> = {};
   let hasAny = false;
 
@@ -215,7 +244,13 @@ function stringAttributes(context: EvaluationContext): Record<string, string> | 
     if (typeof value === "string") {
       attrs[key] = value;
       hasAny = true;
+
+      continue;
     }
+
+    logger.warn(
+      `rollfuse's attribute model only represents string values; evaluation context key "${key}" has type "${typeof value}" and was excluded from rule matching rather than coerced`,
+    );
   }
 
   return hasAny ? attrs : undefined;
