@@ -47,6 +47,9 @@ jobs:
       - name: test
         run: npm run test
 
+      - name: check conformance fixtures against rollfuse/sdk-conformance-fixtures
+        run: ./scripts/check-conformance-fixture-drift.sh
+
   dependency-scan:
     name: Dependency vulnerability scan
     runs-on: ubuntu-latest

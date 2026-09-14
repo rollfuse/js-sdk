@@ -13,6 +13,13 @@ import { bucket, BUCKET_MODULUS } from "../src/bucketing.js";
  * test fails on the JS side and `TestBucket_GoldenVectors` fails
  * identically on the Go side — the two implementations can never silently
  * drift apart.
+ *
+ * Published at github.com/rollfuse/sdk-conformance-fixtures (the public
+ * mirror this repo's own CI checks its copy against, via
+ * scripts/check-conformance-fixture-drift.sh), alongside
+ * rollout-outcome-vectors.json — see rollout-outcome.test.ts for the
+ * second half of this fixture, covering split-boundary resolution rather
+ * than only bucketing.
  */
 const fixturePath = fileURLToPath(
   new URL("./fixtures/bucketing-vectors.json", import.meta.url),

@@ -29,7 +29,7 @@ context: |
   apps/api/internal/evaluation/domain/testdata/bucketing-vectors.json
   (the source of truth, generated from apps/api's own Bucket()) — kept
   from drifting by rollfuse/rollfuse's own CI
-  (scripts/check-bucketing-fixture-drift.sh), which fetches this repo's
+  (scripts/check-conformance-fixture-drift.sh), which fetches this repo's
   copy and diffs it. Any change to bucketing.ts's output requires
   coordinating a fixture update on both sides; never edit
   bucketing-vectors.json to make a bucketing change pass without first
