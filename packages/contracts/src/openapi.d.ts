@@ -2582,6 +2582,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every recognized Role and the Permissions it grants
+         * @description Requires a session for a Member holding roles:manage. The catalog is fixed and identical for every caller — per rbac's "A Role's Permissions Are Discoverable" requirement, so an administrator can be shown what a role permits before assigning it.
+         */
+        get: operations["listRoleCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/members/{member_id}/roles": {
         parameters: {
             query?: never;
@@ -2638,6 +2658,26 @@ export interface paths {
          * @description Requires a session for a Member holding roles:manage. Returns only pending ApprovalRequests scoped to the caller's own Organization.
          */
         get: operations["listPendingApprovalRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/approval-requests/decided": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List decided ApprovalRequests for the caller's Organization
+         * @description Requires a session for a Member holding roles:manage. Returns only already-decided (approved or rejected) ApprovalRequests scoped to the caller's own Organization, most recently decided first -- see complete-governance-surface's "Decided requests remain readable" requirement (task 8.3). listPendingApprovalRequests never returns these, so this is the only path to a request's decision, decider, time and comment once it has been decided.
+         */
+        get: operations["listDecidedApprovalRequests"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3962,6 +4002,13 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /** @description Discriminated by status: "applied" nests the resulting environment_flag_config (the write took effect immediately, as before governance change control existed); "pending_approval" instead carries pending_approval_request_id -- the owning Environment requires approval and the change is held rather than applied. */
+        PutEnvironmentFlagConfigResponse: {
+            /** @enum {string} */
+            status: "applied" | "pending_approval";
+            pending_approval_request_id?: string;
+            environment_flag_config: components["schemas"]["EnvironmentFlagConfig"];
+        };
         EnvironmentFlagConfigSummary: {
             id: string;
             environment_id: string;
@@ -4548,16 +4595,23 @@ export interface components {
             status: "active" | "disabled";
             roles: string[];
         };
-        /** @description Carries the invited email and nothing else. There is deliberately no organization_id field: an invite is always issued into the caller's own session-bound Organization, so the body cannot express a cross-tenant issuance. Unknown fields are rejected. */
+        /** @description Carries the invited email and the role they will hold on acceptance. There is deliberately no organization_id field: an invite is always issued into the caller's own session-bound Organization, so the body cannot express a cross-tenant issuance. Unknown fields are rejected. */
         InviteMemberRequest: {
             /** Format: email */
             email: string;
+            /**
+             * @description The role the invitee will hold once this invite is accepted. Omitted or empty defaults to the base "member" role. Conferring any other role requires the inviter to themselves hold roles:manage; conferring one that includes role administration follows the same approval rule as granting it directly.
+             * @enum {string}
+             */
+            role?: "admin" | "member" | "read_only" | "feature_delivery" | "billing_administration";
         };
         /** @description A MemberInvite projected for administration. It has no token field by design: only the emailed link ever carries the accept token, and only a one-way hash of it is persisted. */
         MemberInviteResponse: {
             id: string;
             /** Format: email */
             email: string;
+            /** @enum {string} */
+            role: "admin" | "member" | "read_only" | "feature_delivery" | "billing_administration";
             /**
              * @description The status an operator must act on. A pending invite whose expiry has lapsed is reported as expired even though the stored row still says pending.
              * @enum {string}
@@ -4580,8 +4634,12 @@ export interface components {
         AcceptInviteResponse: {
             member_id: string;
             organization_id: string;
-            /** Format: email */
             email: string;
+            /**
+             * Format: email
+             * @description Set only when the invite's role included role administration: the Member above is provisioned, but the role grant itself awaits a second member's approval.
+             */
+            pending_approval_request_id?: string;
         };
         CompleteLoginResponse: {
             member_id: string;
@@ -4710,20 +4768,25 @@ export interface components {
         };
         GrantRoleRequest: {
             /** @enum {string} */
-            role: "admin" | "member";
+            role: "admin" | "member" | "read_only" | "feature_delivery" | "billing_administration";
         };
         RoleAssignment: {
             id: string;
             organization_id: string;
             member_id: string;
             /** @enum {string} */
-            role: "admin" | "member";
+            role: "admin" | "member" | "read_only" | "feature_delivery" | "billing_administration";
             /** @enum {string} */
             status: "active" | "revoked";
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             revoked_at?: string;
+        };
+        RoleCatalogEntry: {
+            /** @enum {string} */
+            role: "admin" | "member" | "read_only" | "feature_delivery" | "billing_administration";
+            permissions: string[];
         };
         /** @description Discriminated by status: "granted" carries the created RoleAssignment; "pending_approval" carries approval_request_id instead. */
         GrantRoleResponse: {
@@ -4732,16 +4795,22 @@ export interface components {
             approval_request_id?: string;
             role_assignment?: components["schemas"]["RoleAssignment"];
         };
+        /** @description Kind discriminates which fields are meaningful: "role_grant" populates target_member_id and role; "environment_flag_config_change" populates environment_id and feature_flag_id instead -- see complete-governance-surface's "Let approvals gate production change." */
         ApprovalRequest: {
             id: string;
             organization_id: string;
-            target_member_id: string;
-            requested_by_member_id: string;
             /** @enum {string} */
-            role: "admin";
+            kind: "role_grant" | "environment_flag_config_change";
+            target_member_id?: string;
+            /** @enum {string} */
+            role?: "admin";
+            environment_id?: string;
+            feature_flag_id?: string;
+            requested_by_member_id: string;
             /** @enum {string} */
             status: "pending" | "approved" | "rejected";
             decided_by_member_id?: string;
+            decision_reason?: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -8114,7 +8183,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Configuration created or replaced. */
+            /** @description Configuration created or replaced (status "applied"), or held pending approval (status "pending_approval") because the owning Environment's approval policy requires it -- see PutEnvironmentFlagConfigResponse. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8122,25 +8191,28 @@ export interface operations {
                 content: {
                     /**
                      * @example {
-                     *       "id": "018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f",
-                     *       "environment_id": "018f2f3a-8000-7000-9c3a-1f2b3c4d5e6f",
-                     *       "feature_flag_id": "018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f",
-                     *       "enabled": true,
-                     *       "default_variation_id": "018f2f3a-9200-7000-9c3a-1f2b3c4d5e6f",
-                     *       "rules": [
-                     *         {
-                     *           "attribute": "plan",
-                     *           "value": "enterprise",
-                     *           "outcome": {
-                     *             "variation_id": "018f2f3a-9100-7000-9c3a-1f2b3c4d5e6f"
+                     *       "status": "applied",
+                     *       "environment_flag_config": {
+                     *         "id": "018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "environment_id": "018f2f3a-8000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "feature_flag_id": "018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "enabled": true,
+                     *         "default_variation_id": "018f2f3a-9200-7000-9c3a-1f2b3c4d5e6f",
+                     *         "rules": [
+                     *           {
+                     *             "attribute": "plan",
+                     *             "value": "enterprise",
+                     *             "outcome": {
+                     *               "variation_id": "018f2f3a-9100-7000-9c3a-1f2b3c4d5e6f"
+                     *             }
                      *           }
-                     *         }
-                     *       ],
-                     *       "created_at": "2026-01-01T12:00:00Z",
-                     *       "updated_at": "2026-01-01T12:00:00Z"
+                     *         ],
+                     *         "created_at": "2026-01-01T12:00:00Z",
+                     *         "updated_at": "2026-01-01T12:00:00Z"
+                     *       }
                      *     }
                      */
-                    "application/json": components["schemas"]["EnvironmentFlagConfig"];
+                    "application/json": components["schemas"]["PutEnvironmentFlagConfigResponse"];
                 };
             };
             /** @description Validation error (including malformed JSON, missing default variation, an unknown variation or segment reference, a rule combining an inline condition with a segment_id, a partial rule condition, a rollout not summing to 100, or the environment and feature flag belonging to different projects). */
@@ -8215,7 +8287,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The configuration is owned by a scheduled or active Rollout (manual upserts are rejected), or the environment requires approval for configuration changes. */
+            /** @description The configuration is owned by a scheduled or active Rollout (manual upserts are rejected), or a change to this environment and feature flag is already pending approval (task 7.6 -- a second submission for the same subject is refused, not queued). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -8224,8 +8296,8 @@ export interface operations {
                     /**
                      * @example {
                      *       "error": {
-                     *         "code": "environment_flag_config_approval_required",
-                     *         "message": "environment flag config: this environment requires approval for configuration changes",
+                     *         "code": "environment_flag_config_approval_already_pending",
+                     *         "message": "environment flag config: a change to this environment and feature flag is already pending approval",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -14909,6 +14981,7 @@ export interface operations {
                      *         {
                      *           "id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
                      *           "email": "invitee@example.com",
+                     *           "role": "member",
                      *           "status": "pending",
                      *           "inviter_member_id": "018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f",
                      *           "created_at": "2026-01-01T12:00:00Z",
@@ -14964,7 +15037,8 @@ export interface operations {
             content: {
                 /**
                  * @example {
-                 *       "email": "invitee@example.com"
+                 *       "email": "invitee@example.com",
+                 *       "role": "member"
                  *     }
                  */
                 "application/json": components["schemas"]["InviteMemberRequest"];
@@ -14981,6 +15055,7 @@ export interface operations {
                      * @example {
                      *       "id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
                      *       "email": "invitee@example.com",
+                     *       "role": "member",
                      *       "status": "pending",
                      *       "inviter_member_id": "018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f",
                      *       "created_at": "2026-01-01T12:00:00Z",
@@ -15079,6 +15154,7 @@ export interface operations {
                      * @example {
                      *       "id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
                      *       "email": "invitee@example.com",
+                     *       "role": "member",
                      *       "status": "revoked",
                      *       "inviter_member_id": "018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f",
                      *       "created_at": "2026-01-01T12:00:00Z",
@@ -16662,6 +16738,82 @@ export interface operations {
             };
         };
     };
+    listRoleCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every recognized role with its permission set. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example [
+                     *       {
+                     *         "role": "member",
+                     *         "permissions": [
+                     *           "audit:read",
+                     *           "segments:read",
+                     *           "feature-flags:read"
+                     *         ]
+                     *       },
+                     *       {
+                     *         "role": "admin",
+                     *         "permissions": [
+                     *           "roles:manage",
+                     *           "audit:read",
+                     *           "segments:manage"
+                     *         ]
+                     *       }
+                     *     ]
+                     */
+                    "application/json": components["schemas"]["RoleCatalogEntry"][];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "session_invalid",
+                     *         "message": "A valid bearer session token is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold roles:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "permission_denied",
+                     *         "message": "The member does not have the required permission.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listRoles: {
         parameters: {
             query?: never;
@@ -16850,7 +17002,7 @@ export interface operations {
             header?: never;
             path: {
                 member_id: string;
-                role: "admin" | "member";
+                role: "admin" | "member" | "read_only" | "feature_delivery" | "billing_administration";
             };
             cookie?: never;
         };
@@ -16952,11 +17104,85 @@ export interface operations {
                      *       {
                      *         "id": "018f2f3a-f000-7000-9c3a-1f2b3c4d5e6f",
                      *         "organization_id": "018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "kind": "role_grant",
                      *         "target_member_id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
                      *         "requested_by_member_id": "018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f",
                      *         "role": "admin",
                      *         "status": "pending",
                      *         "created_at": "2026-01-01T12:00:00Z"
+                     *       }
+                     *     ]
+                     */
+                    "application/json": components["schemas"]["ApprovalRequest"][];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "session_invalid",
+                     *         "message": "A valid bearer session token is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold roles:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "permission_denied",
+                     *         "message": "The member does not have the required permission.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listDecidedApprovalRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Decided approval requests. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example [
+                     *       {
+                     *         "id": "018f2f3a-f000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "organization_id": "018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "kind": "role_grant",
+                     *         "target_member_id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "requested_by_member_id": "018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "role": "admin",
+                     *         "status": "approved",
+                     *         "decided_by_member_id": "018f2f3a-b000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "decision_reason": "Reviewed the change, looks safe to ship.",
+                     *         "created_at": "2026-01-01T12:00:00Z",
+                     *         "decided_at": "2026-01-01T13:00:00Z"
                      *       }
                      *     ]
                      */
@@ -17010,7 +17236,19 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                /**
+                 * @example {
+                 *       "comment": "Reviewed the change, looks safe to ship."
+                 *     }
+                 */
+                "application/json": {
+                    /** @description Optional. Persisted alongside the approval decision -- see complete-governance-surface's "A Decision May Carry A Comment" requirement (task 8.2). */
+                    comment?: string;
+                };
+            };
+        };
         responses: {
             /** @description Approval request approved; the admin RoleAssignment was created. */
             200: {
@@ -17022,6 +17260,7 @@ export interface operations {
                      * @example {
                      *       "id": "018f2f3a-f000-7000-9c3a-1f2b3c4d5e6f",
                      *       "organization_id": "018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "kind": "role_grant",
                      *       "target_member_id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
                      *       "requested_by_member_id": "018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f",
                      *       "role": "admin",
@@ -17108,7 +17347,19 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                /**
+                 * @example {
+                 *       "reason": "Targeting rule conflicts with the active experiment."
+                 *     }
+                 */
+                "application/json": {
+                    /** @description Optional. Visible to the requester alongside the rejection -- see complete-governance-surface's "make the rejection and its reason visible to the requester." */
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description Approval request rejected. */
             200: {
@@ -17120,11 +17371,13 @@ export interface operations {
                      * @example {
                      *       "id": "018f2f3a-f000-7000-9c3a-1f2b3c4d5e6f",
                      *       "organization_id": "018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "kind": "role_grant",
                      *       "target_member_id": "018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f",
                      *       "requested_by_member_id": "018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f",
                      *       "role": "admin",
                      *       "status": "rejected",
                      *       "decided_by_member_id": "018f2f3a-b000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "decision_reason": "Targeting rule conflicts with the active experiment.",
                      *       "created_at": "2026-01-01T12:00:00Z",
                      *       "decided_at": "2026-01-01T13:00:00Z"
                      *     }
