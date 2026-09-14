@@ -280,8 +280,16 @@ export class ExposureQueue {
    * the batch is dropped rather than retried or re-queued: retrying risks
    * unbounded queue growth under sustained platform unavailability, and
    * exposure recording is already best-effort server-side.
+   *
+   * `keepalive` (task 8.1) requests a transport that survives page
+   * dismissal: the browser guarantees a `fetch` with `keepalive: true`
+   * is sent even if the document that initiated it is gone by the time
+   * it would otherwise complete. `navigator.sendBeacon` is the more
+   * commonly reached-for API for this, but it cannot set the
+   * `Authorization` header this endpoint requires — `keepalive` can,
+   * since it is a plain `fetch` option, not a different API.
    */
-  async flush(): Promise<void> {
+  async flush(options: { keepalive?: boolean } = {}): Promise<void> {
     if (this.queue.length === 0) {
       return;
     }
@@ -300,6 +308,7 @@ export class ExposureQueue {
         headers,
         signal: AbortSignal.timeout(this.requestTimeoutMs),
         body: JSON.stringify({ events: batch }),
+        keepalive: options.keepalive,
       });
 
       if (!response.ok) {

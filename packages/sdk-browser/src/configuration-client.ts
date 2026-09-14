@@ -104,6 +104,17 @@ export class ConfigurationClient {
   private readonly requestTimeoutMs: number;
   private started = false;
   private stopped = false;
+  /**
+   * True while a poll attempt (attemptFetch) is actually in flight,
+   * distinct from `started`: `started` guards the one-time init-timer/
+   * readyPromise setup and stays true forever, while `looping` reflects
+   * whether the loop is between poll attempts (a timer pending) or
+   * currently awaiting one, so `start()` after a `stop()` (task 8.3) can
+   * tell whether it needs to kick the loop again itself or whether an
+   * already-in-flight attempt will pick the resumed state back up once
+   * it settles.
+   */
+  private looping = false;
   /** True once initialization has terminally failed (a rejected credential): pollLoop stops scheduling further retries, since retrying can only reproduce the same rejection. */
   private terminallyFailed = false;
   /** True once the ready Promise has settled (resolved or rejected), so a later settlement attempt (e.g. a success after an init-timeout rejection) is a harmless no-op rather than an error. */
@@ -175,16 +186,27 @@ export class ConfigurationClient {
    * Begins polling. Returns a Promise resolving the first time a poll
    * succeeds (immediately, if one already has by the time this is
    * called), or rejecting once `initTimeoutMs` elapses without a success,
-   * or immediately if the platform rejects the credential. Safe to call
-   * more than once; only the first call starts the polling loop and the
-   * init-timeout bound.
+   * or immediately if the platform rejects the credential. The one-time
+   * init-timeout bound and readiness Promise are only ever set up once,
+   * but calling `start()` again after `stop()` resumes polling (task
+   * 8.3): the client must not remain permanently inert after a
+   * stop()/start() cycle.
    */
   start(): Promise<void> {
+    this.stopped = false;
+
     if (!this.started) {
       this.started = true;
       this.initTimer = setTimeout(() => {
         this.readyReject(new InitializationTimeoutError(this.initTimeoutMs));
       }, this.initTimeoutMs);
+      this.runPollLoop();
+    } else if (!this.looping && !this.terminallyFailed) {
+      // Resuming after stop(): no attempt is currently in flight (if one
+      // were, it will itself pick the resumed `stopped = false` state back
+      // up once it settles, per pollLoop's own check), and no timer is
+      // pending either (stop() cleared it) — kick the loop immediately
+      // rather than waiting for a timer that no longer exists.
       this.runPollLoop();
     }
 
@@ -201,9 +223,15 @@ export class ConfigurationClient {
    * backstop for that class of regression, not an expected path.
    */
   private runPollLoop(): void {
-    this.pollLoop().catch((error: unknown) => {
-      safeInvoke(this.onConfigRefreshError, error);
-    });
+    this.looping = true;
+
+    this.pollLoop()
+      .catch((error: unknown) => {
+        safeInvoke(this.onConfigRefreshError, error);
+      })
+      .finally(() => {
+        this.looping = false;
+      });
   }
 
   /** Stops polling. Safe to call whether or not `start()` was ever called. */

@@ -4,6 +4,9 @@ import { ConfigurationClient } from "./configuration-client.js";
 import { ConfigNotReadyError, FlagNotFoundError, PublicCredentialRequiredError } from "./errors.js";
 import { ExposureQueue } from "./exposure-queue.js";
 
+/** Default bound on close() — see RollfusePublicClientOptions.closeTimeoutMs's own doc comment. */
+const DEFAULT_CLOSE_TIMEOUT_MS = 5_000;
+
 export interface RollfusePublicClientOptions {
   /** The platform API's base URL, e.g. "https://api.rollfuse.com". */
   baseUrl: string;
@@ -41,6 +44,12 @@ export interface RollfusePublicClientOptions {
    * Default 10s.
    */
   requestTimeoutMs?: number;
+  /**
+   * Bounds `close()`: it returns once every pending exposure has flushed
+   * or once this many milliseconds elapse, whichever comes first, per
+   * sdk-conformance's "A server process shuts down" scenario. Default 5s.
+   */
+  closeTimeoutMs?: number;
   /** Maximum number of queued-but-unsubmitted ExposureEvents. Default 1000. */
   exposureQueueCapacity?: number;
   /** Queue length at which a submission batch is triggered early. Default 20. */
@@ -86,11 +95,28 @@ export class RollfusePublicClient {
   private readonly configurationClient: ConfigurationClient;
   private readonly exposureQueue: ExposureQueue;
   private readonly configChangeListeners = new Set<() => void>();
+  private readonly closeTimeoutMs: number;
+  /**
+   * Bound once so start()/close() can add and remove exactly the same
+   * listener reference across a stop()/start() cycle (task 8.1: flush on
+   * page dismissal or hidden, task 8.3: safe to restart).
+   */
+  private readonly handleVisibilityChange = (): void => {
+    if (document.visibilityState === "hidden") {
+      this.flushOnDismissal();
+    }
+  };
+  private readonly handlePageHide = (): void => {
+    this.flushOnDismissal();
+  };
+  private dismissalListenersRegistered = false;
 
   constructor(options: RollfusePublicClientOptions) {
     if (!options.publicCredential) {
       throw new PublicCredentialRequiredError();
     }
+
+    this.closeTimeoutMs = options.closeTimeoutMs ?? DEFAULT_CLOSE_TIMEOUT_MS;
 
     this.configurationClient = new ConfigurationClient({
       baseUrl: options.baseUrl,
@@ -126,9 +152,16 @@ export class RollfusePublicClient {
    * succeeds; callers that don't want to block startup on it can call
    * `start()` without awaiting and rely on `evaluate`'s `fallback` option
    * until the first fetch lands.
+   *
+   * Also registers page-dismissal flush listeners (task 8.1), safe to
+   * call again after `stop()` (task 8.3: `registerDismissalListeners`
+   * guards against double-registration, and `ConfigurationClient.start`/
+   * `ExposureQueue.start` are both themselves safe to call again after
+   * their own `stop()`).
    */
   start(): Promise<void> {
     this.exposureQueue.start();
+    this.registerDismissalListeners();
 
     return this.configurationClient.start();
   }
@@ -137,12 +170,66 @@ export class RollfusePublicClient {
   stop(): void {
     this.configurationClient.stop();
     this.exposureQueue.stop();
+    this.unregisterDismissalListeners();
   }
 
-  /** Stops background work and submits any remaining queued exposures. */
+  /**
+   * Stops background work, releases every registered `subscribe`
+   * listener (task 8.4), and submits any remaining queued exposures,
+   * bounded by `closeTimeoutMs` (task 8.2): returns once flushed or once
+   * the bound elapses, whichever comes first, rather than awaiting the
+   * underlying flush's own network attempt unconditionally.
+   */
   async close(): Promise<void> {
     this.configurationClient.stop();
-    await this.exposureQueue.close();
+    this.unregisterDismissalListeners();
+    this.configChangeListeners.clear();
+
+    await Promise.race([this.exposureQueue.close(), sleep(this.closeTimeoutMs)]);
+  }
+
+  /**
+   * Registers the page-dismissal flush listeners (task 8.1): pending
+   * exposures are flushed when the page becomes hidden (`visibilitychange`
+   * firing with `document.visibilityState === "hidden"`, the recommended
+   * signal for "the user is leaving," since `unload`/`beforeunload` are
+   * unreliable, especially on mobile) or is literally torn down
+   * (`pagehide`, covering back-forward-cache eviction `visibilitychange`
+   * alone can miss). Guarded against `document`/`window` being absent
+   * (a non-browser test or SSR environment) and against double
+   * registration across a stop()/start() cycle.
+   */
+  private registerDismissalListeners(): void {
+    if (this.dismissalListenersRegistered || typeof document === "undefined" || typeof window === "undefined") {
+      return;
+    }
+
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
+    window.addEventListener("pagehide", this.handlePageHide);
+    this.dismissalListenersRegistered = true;
+  }
+
+  private unregisterDismissalListeners(): void {
+    if (!this.dismissalListenersRegistered) {
+      return;
+    }
+
+    document.removeEventListener("visibilitychange", this.handleVisibilityChange);
+    window.removeEventListener("pagehide", this.handlePageHide);
+    this.dismissalListenersRegistered = false;
+  }
+
+  /**
+   * Flushes pending exposures using `keepalive: true` (task 8.1's "a
+   * transport that survives page dismissal" — see `ExposureQueue.flush`'s
+   * own doc comment for why `keepalive` rather than `sendBeacon`).
+   * Deliberately not awaited by its caller (the dismissal event handlers):
+   * the page may already be gone before the returned Promise would
+   * settle, and `flush()` itself never throws (its own try/catch already
+   * contains every failure path).
+   */
+  private flushOnDismissal(): void {
+    void this.exposureQueue.flush({ keepalive: true });
   }
 
   /**
@@ -245,6 +332,11 @@ export class RollfusePublicClient {
       configVersion: result.config_version,
     });
   }
+}
+
+/** Resolves after ms — close()'s bound, raced against the underlying flush (task 8.2). */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
