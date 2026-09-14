@@ -27,6 +27,13 @@ export interface RollfusePublicClientOptions {
    * default — see `ConfigurationClient`'s own doc comment.
    */
   maxConfigAgeMs?: number;
+  /**
+   * Bounds `start()`'s returned Promise: it rejects if no Configuration
+   * fetch has succeeded within this many milliseconds — see
+   * `ConfigurationClientOptions.initTimeoutMs`'s own doc comment. Default
+   * 15s.
+   */
+  initTimeoutMs?: number;
   /** Maximum number of queued-but-unsubmitted ExposureEvents. Default 1000. */
   exposureQueueCapacity?: number;
   /** Queue length at which a submission batch is triggered early. Default 20. */
@@ -83,6 +90,7 @@ export class RollfusePublicClient {
       publicCredential: options.publicCredential,
       refreshIntervalMs: options.refreshIntervalMs,
       maxConfigAgeMs: options.maxConfigAgeMs,
+      initTimeoutMs: options.initTimeoutMs,
       fetchImpl: options.fetchImpl,
       onConfigRefreshed: (version) => {
         options.onConfigRefreshed?.(version);

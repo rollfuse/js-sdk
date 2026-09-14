@@ -1,6 +1,7 @@
 import type { Configuration } from "@rollfuse/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfigurationClient } from "../src/configuration-client.js";
+import { CredentialRejectedError, InitializationTimeoutError } from "../src/errors.js";
 
 const validConfig: Configuration = {
   environment_id: "env_1",
@@ -244,6 +245,125 @@ describe("ConfigurationClient", () => {
 
     vi.advanceTimersByTime(1_500);
     expect(client.isStale()).toBe(true);
+
+    client.stop();
+  });
+
+  it("start() rejects with InitializationTimeoutError once initTimeoutMs elapses against an unreachable platform (task 2.1)", async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new Error("network unreachable"));
+
+    const client = new ConfigurationClient({
+      baseUrl: "http://api.test",
+      credential: "cred",
+      initTimeoutMs: 3_000,
+      fetchImpl,
+    });
+
+    const started = client.start();
+    // Swallow so a real unhandled rejection isn't reported for the
+    // assertion below, which awaits and inspects it directly.
+    started.catch(() => undefined);
+
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await expect(started).rejects.toThrow(InitializationTimeoutError);
+
+    client.stop();
+  });
+
+  it("start()'s wait terminates within the bound even under continuous failure (task 2.1's own scenario)", async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new Error("network unreachable"));
+    const client = new ConfigurationClient({
+      baseUrl: "http://api.test",
+      credential: "cred",
+      initTimeoutMs: 5_000,
+      fetchImpl,
+    });
+
+    const started = client.start();
+
+    started.catch(() => undefined);
+
+    let settled = false;
+
+    started.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(true);
+
+    client.stop();
+  });
+
+  it("fails initialization immediately, without retry, on a 401 credential rejection (task 2.2)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
+    const onConfigRefreshError = vi.fn();
+
+    const client = new ConfigurationClient({
+      baseUrl: "http://api.test",
+      credential: "wrong-cred",
+      initTimeoutMs: 60_000,
+      fetchImpl,
+      onConfigRefreshError,
+    });
+
+    const started = client.start();
+
+    await expect(started).rejects.toThrow(CredentialRejectedError);
+    expect(onConfigRefreshError).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    // Not retried: no further fetch is scheduled even after a long wait,
+    // unlike a transient failure's capped-exponential backoff.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    client.stop();
+  });
+
+  it("fails initialization immediately, without retry, on a 403 credential rejection (task 2.2)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 403 }));
+
+    const client = new ConfigurationClient({
+      baseUrl: "http://api.test",
+      credential: "cred-without-permission",
+      fetchImpl,
+    });
+
+    const started = client.start();
+
+    await expect(started).rejects.toThrow(CredentialRejectedError);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    client.stop();
+  });
+
+  it("a transient failure followed by a success inside the bound still resolves start() (task 2.3)", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("transient network failure"))
+      .mockResolvedValueOnce(jsonResponse(validConfig));
+
+    const client = new ConfigurationClient({
+      baseUrl: "http://api.test",
+      credential: "cred",
+      initTimeoutMs: 5_000,
+      fetchImpl,
+    });
+
+    const started = client.start();
+
+    // First attempt fails immediately; retried at the base backoff (1000ms,
+    // matching configuration-client.ts's own BASE_BACKOFF_MS).
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await expect(started).resolves.toBeUndefined();
+    expect(client.getConfig()).toEqual(validConfig);
 
     client.stop();
   });

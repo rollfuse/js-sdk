@@ -81,6 +81,30 @@ describe("RollfuseClient", () => {
       expect(result.track_exposure).toBe(false);
     });
 
+    it("a non-blocking start() (called but not awaited) still returns the fallback synchronously, without blocking or throwing (task 2.4)", () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+
+      // Fire-and-forget, exactly as the "Initialization is configured to
+      // be non-blocking" scenario describes — deliberately not awaited.
+      const started = client.start();
+
+      started.catch(() => undefined);
+
+      const result = client.evaluate("user_1", "checkout-redesign", { fallback: "fallback-value" });
+
+      expect(result).toEqual({
+        flag_key: "checkout-redesign",
+        variation_key: "",
+        value: "fallback-value",
+        reason: "default_fallback",
+        config_version: 0,
+        track_exposure: false,
+      });
+
+      client.stop();
+    });
+
     it("throws ConfigNotReadyError when no Configuration is cached and no fallback is supplied", () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
       const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });

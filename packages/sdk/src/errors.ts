@@ -35,3 +35,40 @@ export class FlagNotFoundError extends Error {
     this.name = "FlagNotFoundError";
   }
 }
+
+/**
+ * Rejects `start()`'s returned Promise when the platform cannot be
+ * reached (or does not respond successfully) within `initTimeoutMs` of
+ * the first `start()` call. Per sdk-conformance's "Initialization
+ * Completes Or Fails Within A Bounded Time" requirement: this does not
+ * stop background polling, which keeps retrying so a later recovery still
+ * populates the cache for subsequent `evaluate()` calls, but the
+ * integrator's own await on `start()` is not left hanging indefinitely.
+ */
+export class InitializationTimeoutError extends Error {
+  constructor(initTimeoutMs: number) {
+    super(
+      `Initialization did not complete within ${initTimeoutMs}ms: the platform could not be reached or did not respond successfully in time.`,
+    );
+    this.name = "InitializationTimeoutError";
+  }
+}
+
+/**
+ * Rejects `start()`'s returned Promise immediately, without retry, when
+ * the platform rejects the credential as unauthenticated (401) or
+ * unauthorized (403). Per sdk-conformance's "The credential is rejected"
+ * scenario: retrying a rejected credential can only ever produce the same
+ * rejection, so background polling stops rather than retrying forever.
+ */
+export class CredentialRejectedError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(
+      `The platform rejected the configured credential (HTTP ${status}). Initialization will not be retried; verify the credential and construct a new client.`,
+    );
+    this.name = "CredentialRejectedError";
+    this.status = status;
+  }
+}
