@@ -309,9 +309,14 @@ describe("RollfuseClient", () => {
       client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } });
       client.evaluate("user_2", "checkout-redesign", { attributes: { plan: "enterprise" } });
 
-      expect(onExposureDropped).toHaveBeenCalledWith(1);
+      // Drops are now aggregated and reported once per flush tick (task
+      // 7.5), rather than synchronously inside evaluate()/enqueue() — so
+      // not yet reported here.
+      expect(onExposureDropped).not.toHaveBeenCalled();
 
-      client.stop();
+      await client.close();
+
+      expect(onExposureDropped).toHaveBeenCalledWith(1);
     });
   });
 });

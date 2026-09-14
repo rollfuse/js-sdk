@@ -232,4 +232,166 @@ describe("ExposureQueue", () => {
       vi.useFakeTimers();
     }
   });
+
+  // Manually verified each of the following mechanisms is load-bearing:
+  // (1) removing the dedupe check in enqueue() made the "repeated
+  // identical evaluations" test below submit 3 events instead of 1; (2)
+  // reverting droppedSinceLastReport back to a synchronous
+  // safeInvoke(onExposureDropped, 1) per drop made the "aggregated" test
+  // observe 5 separate calls instead of one call with 5; (3) removing the
+  // `flushing` guard in runFlush made the "one flush request at a time"
+  // test observe 2 concurrent requests instead of 1. Restored before
+  // committing in every case.
+  it("repeated identical evaluations within the dedupe window produce one exposure (task 7.1)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ accepted: 1 }));
+    const queue = new ExposureQueue({ baseUrl: "http://api.test", credential: "cred", fetchImpl, dedupeWindowMs: 60_000 });
+
+    queue.enqueue(sampleEvent);
+    queue.enqueue(sampleEvent);
+    queue.enqueue(sampleEvent);
+
+    await queue.flush();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    const body = JSON.parse((fetchImpl.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.events).toHaveLength(1);
+  });
+
+  it("once the dedupe window elapses, the same identity is reported again (task 7.1)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ accepted: 1 }));
+    const queue = new ExposureQueue({ baseUrl: "http://api.test", credential: "cred", fetchImpl, dedupeWindowMs: 1_000 });
+
+    queue.enqueue(sampleEvent);
+    await queue.flush();
+
+    vi.setSystemTime(Date.now() + 1_000);
+
+    queue.enqueue(sampleEvent);
+    await queue.flush();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const secondBody = JSON.parse((fetchImpl.mock.calls[1][1] as RequestInit).body as string);
+    expect(secondBody.events).toHaveLength(1);
+  });
+
+  it("a changed served variation is a new identity, even within the dedupe window (task 7.2)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ accepted: 2 }));
+    const queue = new ExposureQueue({ baseUrl: "http://api.test", credential: "cred", fetchImpl, dedupeWindowMs: 60_000 });
+
+    queue.enqueue(sampleEvent);
+    queue.enqueue({ ...sampleEvent, variationKey: "off" });
+
+    await queue.flush();
+
+    const body = JSON.parse((fetchImpl.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.events).toHaveLength(2);
+  });
+
+  it("a changed configuration version is a new identity, even within the dedupe window (task 7.2)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ accepted: 2 }));
+    const queue = new ExposureQueue({ baseUrl: "http://api.test", credential: "cred", fetchImpl, dedupeWindowMs: 60_000 });
+
+    queue.enqueue(sampleEvent);
+    queue.enqueue({ ...sampleEvent, configVersion: sampleEvent.configVersion + 1 });
+
+    await queue.flush();
+
+    const body = JSON.parse((fetchImpl.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.events).toHaveLength(2);
+  });
+
+  it("a different subject is a new identity, even within the dedupe window", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ accepted: 2 }));
+    const queue = new ExposureQueue({ baseUrl: "http://api.test", credential: "cred", fetchImpl, dedupeWindowMs: 60_000 });
+
+    queue.enqueue(sampleEvent);
+    queue.enqueue({ ...sampleEvent, subjectKey: "user_2" });
+
+    await queue.flush();
+
+    const body = JSON.parse((fetchImpl.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.events).toHaveLength(2);
+  });
+
+  it("capacity drops are aggregated into one onExposureDropped(count) call per flush tick rather than one per drop (task 7.5)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ accepted: 1 }));
+    const onExposureDropped = vi.fn();
+
+    const queue = new ExposureQueue({
+      baseUrl: "http://api.test",
+      credential: "cred",
+      capacity: 1,
+      flushIntervalMs: 5_000,
+      fetchImpl,
+      onExposureDropped,
+    });
+
+    queue.start();
+
+    // Fills the one-item capacity, then five more distinct identities
+    // (distinct subjects, so dedupe never suppresses them) overflow it.
+    queue.enqueue(sampleEvent);
+    for (let i = 0; i < 5; i++) {
+      queue.enqueue({ ...sampleEvent, subjectKey: `overflow_${i}` });
+    }
+
+    // Not yet reported: aggregation happens on the next flush tick, not
+    // synchronously inside enqueue().
+    expect(onExposureDropped).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(onExposureDropped).toHaveBeenCalledTimes(1);
+    expect(onExposureDropped).toHaveBeenCalledWith(5);
+
+    queue.stop();
+  });
+
+  it("a queue above batch size issues only one flush request at a time (task 7.6)", async () => {
+    let resolveFirstRequest!: (response: Response) => void;
+    const firstRequest = new Promise<Response>((resolve) => {
+      resolveFirstRequest = resolve;
+    });
+
+    let requestCount = 0;
+    const fetchImpl = vi.fn(() => {
+      requestCount++;
+
+      return requestCount === 1 ? firstRequest : Promise.resolve(jsonResponse({ accepted: 1 }));
+    });
+
+    const queue = new ExposureQueue({
+      baseUrl: "http://api.test",
+      credential: "cred",
+      batchSize: 2,
+      flushIntervalMs: 5_000,
+      fetchImpl,
+    });
+
+    queue.start();
+
+    // Reaches batchSize, triggering the first (still-pending) flush.
+    queue.enqueue({ ...sampleEvent, subjectKey: "user_1" });
+    queue.enqueue({ ...sampleEvent, subjectKey: "user_2" });
+
+    await vi.waitFor(() => expect(requestCount).toBe(1));
+
+    // More distinct identities accumulate to batchSize again while the
+    // first request is still in flight; the periodic timer would also
+    // fire here in real usage. Neither should start a second concurrent
+    // request while the first hasn't resolved.
+    queue.enqueue({ ...sampleEvent, subjectKey: "user_3" });
+    queue.enqueue({ ...sampleEvent, subjectKey: "user_4" });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(requestCount).toBe(1);
+
+    // Once the first request resolves, the queued backlog is flushed
+    // next, as its own single request.
+    resolveFirstRequest(jsonResponse({ accepted: 2 }));
+    await vi.waitFor(() => expect(requestCount).toBe(2));
+
+    queue.stop();
+  });
 });
