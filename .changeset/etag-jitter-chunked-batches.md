@@ -1,5 +1,5 @@
 ---
-"@rollfuse/sdk": patch
+"@rollfuse/sdk-js": patch
 "@rollfuse/sdk-browser": patch
 ---
 

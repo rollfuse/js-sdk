@@ -1,5 +1,5 @@
 ---
-"@rollfuse/sdk": minor
+"@rollfuse/sdk-js": minor
 "@rollfuse/sdk-browser": minor
 ---
 
