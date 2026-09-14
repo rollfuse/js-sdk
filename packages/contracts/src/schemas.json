@@ -1,4 +1,154 @@
 {
+  "RecordContactErasureRequest": {
+    "type": "object",
+    "required": [
+      "email"
+    ],
+    "properties": {
+      "email": {
+        "type": "string",
+        "format": "email",
+        "description": "The contact address the request arrived from. Records are located by it, canonically (trimmed and lower-cased)."
+      }
+    },
+    "additionalProperties": false
+  },
+  "ErasureStoreOutcome": {
+    "type": "object",
+    "required": [
+      "store",
+      "tables",
+      "disposition",
+      "records_affected"
+    ],
+    "properties": {
+      "store": {
+        "type": "string",
+        "description": "One store in the enumerated erasure scope. The scope is enumerated in exactly one place so a store added later cannot be silently skipped.",
+        "enum": [
+          "members",
+          "member_access",
+          "approval_requests",
+          "visitor_journey",
+          "visitor_consent",
+          "leads",
+          "audit_events",
+          "flag_config_history",
+          "support",
+          "billing_charges",
+          "billing_notifications",
+          "identity_links"
+        ]
+      },
+      "tables": {
+        "type": "array",
+        "description": "The database tables that store covers.",
+        "items": {
+          "type": "string"
+        }
+      },
+      "disposition": {
+        "type": "string",
+        "description": "What was done. `retained`, `not_applicable` and `failed` always carry a reason.",
+        "enum": [
+          "deleted",
+          "anonymized",
+          "retained",
+          "not_applicable",
+          "failed"
+        ]
+      },
+      "records_affected": {
+        "type": "integer",
+        "format": "int64",
+        "description": "How many records the disposition applied to: deleted, anonymized, or counted and kept. Zero for a not-applicable or failed store."
+      },
+      "reason": {
+        "type": "string",
+        "description": "Why the records were kept, why the store held nothing reachable, or why it failed."
+      }
+    },
+    "additionalProperties": false
+  },
+  "ErasureRequest": {
+    "type": "object",
+    "description": "A recorded erasure request, its acknowledgement and — once processed — the outcome per store.\nIt deliberately carries NO field naming the person: not the member id it was recorded against, not the contact address. The acknowledgement goes back to whoever already proved they are that person, so echoing it would only make the response another copy of what the request exists to erase. The stored record itself is cleared of both the moment processing completes.",
+    "required": [
+      "id",
+      "origin",
+      "status",
+      "acknowledgement",
+      "requested_at",
+      "respond_by",
+      "response_window_days",
+      "processed_at",
+      "outcomes"
+    ],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "origin": {
+        "type": "string",
+        "description": "`member` for an authenticated in-product request, `contact` for one recorded by an operator on behalf of a person with no account.",
+        "enum": [
+          "member",
+          "contact"
+        ]
+      },
+      "status": {
+        "type": "string",
+        "description": "`received` is recorded and awaiting processing. `completed` is every store visited without failure, with the identifying input cleared. `refused` is nothing erased, with `refusal_reason` saying what must happen first. `failed` is at least one store that could not be processed, kept retryable.",
+        "enum": [
+          "received",
+          "completed",
+          "refused",
+          "failed"
+        ]
+      },
+      "acknowledgement": {
+        "type": "string",
+        "description": "The plain-language acknowledgement, stating the processing window while the request is open."
+      },
+      "requested_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "respond_by": {
+        "type": "string",
+        "format": "date-time",
+        "description": "The deadline of the stated processing window, persisted when the request was recorded so a later configuration change cannot move a commitment already made."
+      },
+      "response_window_days": {
+        "type": "integer",
+        "description": "The stated window in days, derived from this request's own timestamps."
+      },
+      "processed_at": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time",
+        "description": "When the request finished processing, or null while still pending."
+      },
+      "refusal_reason": {
+        "type": "string",
+        "description": "Present only for a refused request: what must happen first, and the options available."
+      },
+      "outcomes": {
+        "type": "array",
+        "description": "One entry per enumerated store, in registry order.",
+        "items": {
+          "$ref": "#/components/schemas/ErasureStoreOutcome"
+        }
+      },
+      "report": {
+        "type": "string",
+        "description": "The rendered, human-readable report naming what was deleted, what was anonymized and what was retained with the reason for each. Empty until the request has been processed."
+      }
+    },
+    "additionalProperties": false
+  },
   "StatusResponse": {
     "type": "object",
     "required": [
@@ -505,6 +655,11 @@
         "type": "string",
         "maxLength": 64,
         "description": "The submitting browser's pseudonymous visitor id, sent only when the visitor granted analytics consent. Optional: a submission without it is equally valid, and stitching the Lead to that visitor's journey never affects whether the Lead is persisted."
+      },
+      "source": {
+        "type": "string",
+        "maxLength": 100,
+        "description": "The specific page or tool that captured this lead (e.g. \"pricing_page\", \"migration_checker\"), distinct from landing_url. Optional."
       }
     }
   },
@@ -551,6 +706,9 @@
       "referrer": {
         "type": "string"
       },
+      "source": {
+        "type": "string"
+      },
       "locale": {
         "type": "string",
         "enum": [
@@ -585,10 +743,10 @@
         "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
       },
       "region": {
+        "description": "The declared data-residency region. The accepted set is the set of regions this deployment actually serves, taken from its `SERVED_REGIONS` configuration — not from this enumeration, which mirrors it. This deployment serves `us` only: every byte is stored in one Amazon Web Services United States region. A recognized region it does not serve (for example `eu`) is refused with `organization_region_not_served` rather than accepted and quietly stored elsewhere.",
         "type": "string",
         "enum": [
-          "us",
-          "eu"
+          "us"
         ]
       }
     }
@@ -614,6 +772,7 @@
         "type": "string"
       },
       "region": {
+        "description": "The data-residency region this Organization declared when it was created. It is immutable. The set accepted at creation is narrower than the set readable here: an Organization created before a region was withdrawn still carries it, and those are listed for reconciliation at `GET /v1/staff/organizations/unserved-regions`. A region here is a declared and audited commitment, not one enforced by separate regional infrastructure — this deployment stores all data in one Amazon Web Services United States region.",
         "type": "string",
         "enum": [
           "us",
@@ -627,6 +786,42 @@
       "updated_at": {
         "type": "string",
         "format": "date-time"
+      }
+    }
+  },
+  "UnservedRegionOrganizationsResponse": {
+    "description": "One page of Organizations declaring a data-residency region this deployment does not serve, for operator reconciliation.",
+    "type": "object",
+    "required": [
+      "organizations",
+      "total",
+      "limit",
+      "offset",
+      "served_regions"
+    ],
+    "properties": {
+      "organizations": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Organization"
+        }
+      },
+      "total": {
+        "description": "The number of matching Organizations across the whole table, not just this page, so a capped page discloses what it left behind.",
+        "type": "integer"
+      },
+      "limit": {
+        "type": "integer"
+      },
+      "offset": {
+        "type": "integer"
+      },
+      "served_regions": {
+        "description": "The regions this deployment actually serves, which is what membership of this listing was measured against.",
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
       }
     }
   },
@@ -653,10 +848,10 @@
         "type": "string"
       },
       "region": {
+        "description": "The data-residency region assigned to the new Organization. See the `Organization` schema's own `region` for what the commitment means and where the data actually lives.",
         "type": "string",
         "enum": [
-          "us",
-          "eu"
+          "us"
         ]
       },
       "created_at": {
@@ -3327,7 +3522,9 @@
             "billing:refund",
             "support:view",
             "support:respond",
-            "support:close"
+            "support:close",
+            "privacy:erase",
+            "residency:review"
           ]
         }
       }
@@ -3493,6 +3690,38 @@
         "items": {
           "type": "string"
         }
+      },
+      "terms": {
+        "type": "object",
+        "required": [
+          "current_version",
+          "acceptance_required"
+        ],
+        "description": "The terms of service in force, and whether this Member still owes an acceptance of it. Carried on the identity response rather than on a second endpoint because the operator shell reads this on every authenticated render, and a separate call would let an authenticated screen paint before the answer arrived.\n\nNo acceptance timestamp and no previously-accepted version are reported: the client only needs to know whether to ask. The record itself is evidence held server-side.",
+        "properties": {
+          "current_version": {
+            "type": "string",
+            "description": "The version marker of the terms of service currently in force, empty on a deployment that publishes no terms. Clients render this rather than restating a version of their own, so the published document and the accepted version cannot drift apart."
+          },
+          "acceptance_required": {
+            "type": "boolean",
+            "description": "True when this Member's recorded acceptance is for an earlier version or for nothing at all. A Member provisioned by SCIM, by an invite, by just-in-time OIDC login or by social signup starts with no recorded acceptance, so this is true for all of them until they have accepted."
+          }
+        }
+      }
+    }
+  },
+  "AcceptTermsRequest": {
+    "type": "object",
+    "required": [
+      "terms_version"
+    ],
+    "additionalProperties": false,
+    "description": "The version the caller is accepting. It is COMPARED against the version in force, never stored as given: a stale browser cannot record an acceptance of the document it happened to be showing.",
+    "properties": {
+      "terms_version": {
+        "type": "string",
+        "minLength": 1
       }
     }
   },
@@ -5328,6 +5557,31 @@
       }
     }
   },
+  "UpdateBillingDetailsRequest": {
+    "type": "object",
+    "required": [
+      "billing_email",
+      "organization_legal_name",
+      "country",
+      "tax_id"
+    ],
+    "properties": {
+      "billing_email": {
+        "type": "string"
+      },
+      "organization_legal_name": {
+        "type": "string"
+      },
+      "country": {
+        "type": "string",
+        "description": "ISO 3166-1 alpha-2 country code."
+      },
+      "tax_id": {
+        "type": "string",
+        "description": "The organization's tax identifier (e.g. CNPJ in Brazil)."
+      }
+    }
+  },
   "PaymentMethodSummary": {
     "type": "object",
     "required": [
@@ -5705,6 +5959,173 @@
       "payment_method_id": {
         "type": "string",
         "description": "A payment method verified through a setup intent (see POST .../billing/setup-intent). Always required: checkout always collects a new payment method, even for an organization whose prior Subscription is canceled — it never reuses one."
+      }
+    }
+  },
+  "EntitlementPolicy": {
+    "type": "object",
+    "required": [
+      "kind"
+    ],
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "finite",
+          "metered",
+          "capped_metered",
+          "unlimited"
+        ]
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Present only for a finite policy."
+      },
+      "included_amount": {
+        "type": "integer",
+        "description": "Present only for a metered or capped-metered policy."
+      },
+      "period": {
+        "type": "string",
+        "description": "Present only for a metered or capped-metered policy."
+      }
+    }
+  },
+  "EntitlementUsagePeriod": {
+    "type": "object",
+    "required": [
+      "period_start",
+      "period_end",
+      "amount"
+    ],
+    "properties": {
+      "period_start": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "period_end": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "amount": {
+        "type": "integer"
+      }
+    }
+  },
+  "EntitlementMeteredUsage": {
+    "type": "object",
+    "required": [
+      "included_amount",
+      "period"
+    ],
+    "properties": {
+      "included_amount": {
+        "type": "integer"
+      },
+      "period": {
+        "type": "string"
+      },
+      "current_period": {
+        "$ref": "#/components/schemas/EntitlementUsagePeriod"
+      }
+    }
+  },
+  "EntitlementDowngradeEvent": {
+    "type": "object",
+    "required": [
+      "selection_deadline_at",
+      "lock_deadline_at",
+      "selection_method"
+    ],
+    "properties": {
+      "selection_deadline_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "lock_deadline_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "selection_method": {
+        "type": "string"
+      }
+    }
+  },
+  "EntitlementAllocation": {
+    "type": "object",
+    "required": [
+      "resource_id",
+      "status",
+      "allocated_at"
+    ],
+    "properties": {
+      "resource_id": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "allocated_at": {
+        "type": "string",
+        "format": "date-time"
+      }
+    }
+  },
+  "EntitlementStatus": {
+    "type": "object",
+    "required": [
+      "resource_key",
+      "policy",
+      "active_count"
+    ],
+    "properties": {
+      "resource_key": {
+        "type": "string"
+      },
+      "policy": {
+        "$ref": "#/components/schemas/EntitlementPolicy"
+      },
+      "active_count": {
+        "type": "integer",
+        "description": "0 for a metered grant, which has no allocations to count."
+      },
+      "open_downgrade_event": {
+        "$ref": "#/components/schemas/EntitlementDowngradeEvent"
+      },
+      "pending_selection": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/EntitlementAllocation"
+        }
+      },
+      "metered_usage": {
+        "$ref": "#/components/schemas/EntitlementMeteredUsage"
+      }
+    }
+  },
+  "FinalizeEntitlementSelectionRequest": {
+    "type": "object",
+    "required": [
+      "kept_resource_ids"
+    ],
+    "properties": {
+      "kept_resource_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "CreateSetupIntentResponse": {
+    "type": "object",
+    "required": [
+      "client_secret"
+    ],
+    "properties": {
+      "client_secret": {
+        "type": "string",
+        "description": "The payment gateway's setup-intent client secret. The frontend confirms it directly against the gateway; it never reaches this API again."
       }
     }
   },

@@ -108,16 +108,38 @@ paths:
                 updated_at: "2026-01-01T12:00:00Z"
                 identity_provider_bootstrap_token: boot_9f2c1e...redacted
         "400":
-          description: Validation error or malformed JSON body.
+          description: >-
+            Validation error, malformed JSON body, or a declared region this
+            deployment does not serve.
+
+
+            Two distinct codes: `organization_validation_error` for a
+            malformed field (including a region that is not a recognized
+            region name at all), and `organization_region_not_served` for a
+            recognized region the deployment has no infrastructure in. The
+            second names the refused region and the regions actually served,
+            so a caller can retry against one that exists.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
-              example:
-                error:
-                  code: organization_validation_error
-                  message: "organization: slug is required"
-                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+              examples:
+                validation_error:
+                  summary: A malformed field
+                  value:
+                    error:
+                      code: organization_validation_error
+                      message: "organization: slug is required"
+                      request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+                region_not_served:
+                  summary: A recognized region the deployment does not serve
+                  value:
+                    error:
+                      code: organization_region_not_served
+                      message: >-
+                        organization: region "eu" is not served by this
+                        deployment; served regions: us
+                      request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
         "409":
           description: An organization with this slug already exists.
           content:
@@ -911,6 +933,9 @@ paths:
                 project_id: 018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f
                 name: Production
                 slug: production
+                is_production: false
+                requires_approval: false
+                disable_exempt_from_approval: true
                 created_at: "2026-01-01T12:00:00Z"
                 updated_at: "2026-01-01T12:00:00Z"
         "400":
@@ -1012,6 +1037,9 @@ paths:
                     project_id: 018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f
                     name: Production
                     slug: production
+                    is_production: false
+                    requires_approval: false
+                    disable_exempt_from_approval: true
                     created_at: "2026-01-01T12:00:00Z"
                     updated_at: "2026-01-01T12:00:00Z"
                 limit: 50
@@ -1088,6 +1116,9 @@ paths:
                 project_id: 018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f
                 name: Production
                 slug: production
+                is_production: false
+                requires_approval: false
+                disable_exempt_from_approval: true
                 created_at: "2026-01-01T12:00:00Z"
                 updated_at: "2026-01-01T12:00:00Z"
         "401":
@@ -1488,6 +1519,7 @@ paths:
                 id: 018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f
                 project_id: 018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f
                 name: New Checkout Flow
+                description: Rolls out the redesigned checkout flow.
                 key: new-checkout-flow
                 variations:
                   - id: 018f2f3a-9100-7000-9c3a-1f2b3c4d5e6f
@@ -1496,6 +1528,7 @@ paths:
                   - id: 018f2f3a-9200-7000-9c3a-1f2b3c4d5e6f
                     key: "off"
                     value: false
+                tags: []
                 created_at: "2026-01-01T12:00:00Z"
                 updated_at: "2026-01-01T12:00:00Z"
                 archived_at: null
@@ -1627,6 +1660,7 @@ paths:
                   - id: 018f2f3a-8000-7000-9c3a-1f2b3c4d5e6f
                     project_id: 018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f
                     name: New Checkout Flow
+                    description: Rolls out the redesigned checkout flow.
                     key: new-checkout-flow
                     variations:
                       - id: 018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f
@@ -1635,11 +1669,13 @@ paths:
                       - id: 018f2f3a-9001-7000-9c3a-1f2b3c4d5e6f
                         key: "off"
                         value: false
+                    tags: []
                     created_at: "2026-01-01T12:00:00Z"
                     updated_at: "2026-01-01T12:00:00Z"
                     archived_at: null
                 limit: 50
                 offset: 0
+                has_more: false
         "400":
           description: Invalid limit, offset or include_archived.
           content:
@@ -1711,6 +1747,7 @@ paths:
                 id: 018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f
                 project_id: 018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f
                 name: New Checkout Flow
+                description: Rolls out the redesigned checkout flow.
                 key: new-checkout-flow
                 variations:
                   - id: 018f2f3a-9100-7000-9c3a-1f2b3c4d5e6f
@@ -1719,6 +1756,7 @@ paths:
                   - id: 018f2f3a-9200-7000-9c3a-1f2b3c4d5e6f
                     key: "off"
                     value: false
+                tags: []
                 created_at: "2026-01-01T12:00:00Z"
                 updated_at: "2026-01-01T12:00:00Z"
                 archived_at: null
@@ -7550,9 +7588,11 @@ paths:
                 id: 018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f
                 project_id: 018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f
                 name: Checkout Error Rate
+                description: Share of checkout attempts that fail.
                 key: checkout-error-rate
                 aggregation_type: rate
                 unit: percent
+                archived_at: null
                 created_at: "2026-01-01T12:00:00Z"
                 updated_at: "2026-01-01T12:00:00Z"
         "400":
@@ -7633,9 +7673,11 @@ paths:
                   - id: 018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f
                     project_id: 018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f
                     name: Checkout Error Rate
+                    description: Share of checkout attempts that fail.
                     key: checkout-error-rate
                     aggregation_type: rate
                     unit: percent
+                    archived_at: null
                     created_at: "2026-01-01T12:00:00Z"
                     updated_at: "2026-01-01T12:00:00Z"
         "401":
@@ -7692,9 +7734,11 @@ paths:
                 id: 018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f
                 project_id: 018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f
                 name: Checkout Error Rate
+                description: Share of checkout attempts that fail.
                 key: checkout-error-rate
                 aggregation_type: rate
                 unit: percent
+                archived_at: null
                 created_at: "2026-01-01T12:00:00Z"
                 updated_at: "2026-01-01T12:00:00Z"
         "401":
@@ -8925,6 +8969,166 @@ paths:
                   message: No identity provider is configured for this organization.
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
 
+  /v1/auth/social/google:
+    get:
+      operationId: initiateSocialLogin
+      summary: Start a platform-level Google login
+      description: >-
+        Redirects the browser to Google's OAuth authorization endpoint. This
+        is the entry point for every self-serve signup, so it takes no
+        `organization_id` — unlike `/v1/organizations/{organization_id}/login`,
+        social login exists precisely to start a login before any
+        Organization is known.
+
+
+        The response also issues a short-lived, `HttpOnly` browser-binding
+        cookie scoped to `/v1/auth/social/google/callback`; the callback
+        requires it back before exchanging any authorization code.
+      tags: [identity-provider]
+      responses:
+        "302":
+          description: Redirect to Google's authorization endpoint.
+          headers:
+            Set-Cookie:
+              description: >-
+                `growth_ops_social_login_binding=<secret>;
+                Path=/v1/auth/social/google/callback; Max-Age=600; HttpOnly;
+                SameSite=Lax`, plus `Secure` outside development.
+              schema:
+                type: string
+        "404":
+          description: No platform Google OAuth client is configured for this deployment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: social_login_not_configured
+                  message: Google social login is not configured for this deployment.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+
+  /v1/auth/social/google/callback:
+    get:
+      operationId: completeSocialLogin
+      summary: Complete a platform-level Google login
+      description: >-
+        Verifies the callback's state against its tracked attempt, exchanges
+        the authorization code, and resolves or just-in-time provisions the
+        authenticated Member — auto-provisioning a new Organization,
+        Project and Environment when the Google identity is unknown to the
+        platform.
+
+
+        The `growth_ops_social_login_binding` cookie issued at
+        `/v1/auth/social/google` is REQUIRED and is verified before the
+        authorization code is exchanged. It is single-use and is cleared by
+        this response either way.
+
+
+        The response shape is negotiated by the request's Accept header,
+        identically to `/v1/auth/callback`: a browser receives the session
+        as an `HttpOnly`, `SameSite=Lax` cookie and a redirect; every other
+        caller receives the 200 JSON body, the only place the plaintext
+        session token is ever returned.
+      tags: [identity-provider]
+      parameters:
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: Accept
+          in: header
+          required: false
+          description: >-
+            An Accept value preferring `text/html` selects the browser
+            response (cookie + redirect) instead of the JSON body.
+          schema:
+            type: string
+        - name: growth_ops_social_login_binding
+          in: cookie
+          required: true
+          description: >-
+            The browser-binding secret issued when the login was started. A
+            callback that does not present it is refused before any
+            authorization code is exchanged.
+          schema:
+            type: string
+      responses:
+        "302":
+          description: >-
+            Login completed for a browser. The session is set as an HttpOnly
+            cookie and the browser is redirected into the console — either
+            "/projects", or "/welcome" with the auto-provisioned Project and
+            Environment ids when this was a brand-new self-service signup.
+          headers:
+            Location:
+              description: The console landing path.
+              schema:
+                type: string
+            Set-Cookie:
+              description: >-
+                `growth_ops_session=<token>; Path=/; HttpOnly; SameSite=Lax`,
+                plus `Secure` outside development and `Domain` when
+                configured.
+              schema:
+                type: string
+        "200":
+          description: Login completed for a non-browser caller.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompleteLoginResponse"
+              example:
+                member_id: 018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f
+                organization_id: 018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f
+                email: person@example.com
+                session_token: sess_018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f.7f3a9c1b2e4d6a8f0c1b3d5e7f9a1c3e
+                expires_at: "2026-01-02T12:00:00Z"
+        "401":
+          description: The callback is invalid, expired, or was already completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: callback_invalid
+                  message: The login callback is invalid or has expired.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+        "404":
+          description: No platform Google OAuth client is configured for this deployment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: social_login_not_configured
+                  message: Google social login is not configured for this deployment.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+        "409":
+          description: >-
+            The Google identity's email already belongs to a different
+            Member — either another Organization entirely, or an unverified
+            Google email colliding with an existing account — so no session
+            was issued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: social_email_already_taken
+                  message: This email already belongs to another account. Verify your Google email or sign in through your organization instead.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+
   /v1/auth/callback:
     get:
       operationId: completeLogin
@@ -9863,6 +10067,9 @@ paths:
                   id: 018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f
                   name: Acme
                 roles: [admin]
+                terms:
+                  current_version: 1.0.0
+                  acceptance_required: false
         "401":
           description: >-
             The presented session token is missing, invalid, expired or
@@ -9875,6 +10082,89 @@ paths:
                 error:
                   code: session_invalid
                   message: A valid bearer session token is required.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+
+  /v1/sessions/current/terms-acceptance:
+    post:
+      operationId: acceptTerms
+      summary: Record the caller's acceptance of the terms of service
+      description: >-
+        Records that the signed-in Member deliberately accepted the terms of
+        service currently in force, together with the version and the
+        instant. This is the only path that writes an acceptance: no
+        Member-creating path records one on the person's behalf, because a
+        record written by a code path is evidence of the code path and not of
+        an act.
+
+
+        Gated by a valid session only, with no permission requirement — a
+        Member holding no role must be able to accept, since that is the
+        default after just-in-time provisioning and they can reach nothing
+        else until they have.
+
+
+        The Member and the Organization both come from the resolved session.
+        There is no member id in the body and none in the path, so this
+        endpoint can only ever write the caller's own row.
+
+
+        `terms_version` is compared against the version in force and the
+        version in force is what gets recorded. A caller naming a different
+        version is refused with `terms_version_mismatch` rather than
+        recording what they asked for.
+      tags: [identity-provider]
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptTermsRequest"
+            example:
+              terms_version: 1.0.0
+      responses:
+        "204":
+          description: The acceptance was recorded.
+        "400":
+          description: The body was undecodable or named no version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: member_validation_error
+                  message: "member: terms version is required"
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+        "401":
+          description: >-
+            The presented session token is missing, invalid, expired or
+            revoked, or the Member it resolves to has been disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: session_invalid
+                  message: A valid bearer session token is required.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+        "409":
+          description: >-
+            The version named is not the one in force (`terms_version_mismatch`
+            — reload and read the current document), or this deployment
+            publishes no terms at all (`terms_acceptance_not_required`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: terms_version_mismatch
+                  message: >-
+                    The terms version you accepted is no longer the one in
+                    force. Reload and read the current terms.
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
 
   /v1/audit-events:
@@ -9955,6 +10245,7 @@ paths:
                     created_at: "2026-01-01T12:00:00Z"
                 limit: 100
                 offset: 0
+                has_more: false
         "400":
           description: >-
             An invalid filter (inverted occurred-at window, malformed
@@ -11162,6 +11453,176 @@ paths:
                   message: This organization already has an active subscription.
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
 
+  /v1/organizations/{organization_id}/billing/subscription/cancel:
+    post:
+      operationId: cancelOrganizationSubscription
+      summary: Cancel an organization's subscription
+      description: >-
+        Requires a session for a Member holding billing:manage. Takes no
+        request body. Always classified as a voluntary cancellation — a
+        non-payment cancellation only ever arrives through the payment
+        gateway's own webhook path, never through this endpoint. Returns the
+        subscription in its new, canceled state.
+      tags: [billing]
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The now-canceled subscription.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationSubscription"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The session's Member does not hold billing:manage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: >-
+            The requested Organization is not the caller's own, or has no
+            Subscription at all.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: >-
+            The subscription is still on the platform's default $0 plan —
+            there is no paid cycle to cancel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: billing_nothing_to_cancel
+                  message: This subscription has no paid plan to cancel.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+
+  /v1/organizations/{organization_id}/billing/setup-intent:
+    post:
+      operationId: createOrganizationSetupIntent
+      summary: Create a setup intent to collect a new payment method
+      description: >-
+        Requires a session for a Member holding billing:manage. Takes no
+        request body. Creates nothing billable — it only lazily resolves the
+        organization's gateway customer and returns a client secret the
+        frontend confirms directly against the payment gateway before the
+        collected payment method is ever referenced by a checkout, plan
+        change or replacement call.
+      tags: [billing]
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A client secret for the frontend to confirm against the payment gateway.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateSetupIntentResponse"
+              example:
+                client_secret: seti_1NxSample_secret_abc123
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The session's Member does not hold billing:manage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The requested Organization is not the caller's own.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{organization_id}/billing/billing-details:
+    post:
+      operationId: updateOrganizationBillingDetails
+      summary: Update an organization's invoicing details
+      description: >-
+        Requires a session for a Member holding billing:manage. Creates
+        nothing billable — it only lazily resolves the organization's
+        gateway customer and forwards the supplied details to it. Every
+        field is required.
+      tags: [billing]
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBillingDetailsRequest"
+            example:
+              billing_email: billing@example.com
+              organization_legal_name: Acme Inc
+              country: BR
+              tax_id: "12345678000199"
+      responses:
+        "204":
+          description: The billing details were updated.
+        "400":
+          description: Validation error, malformed JSON body, or a missing required field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: billing_validation_error
+                  message: billing_email is required.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The session's Member does not hold billing:manage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The requested Organization is not the caller's own.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{organization_id}/billing/payment-method:
     get:
       operationId: getOrganizationPaymentMethod
@@ -11495,6 +11956,137 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{organization_id}/entitlements/{resource_key}:
+    get:
+      operationId: getEntitlementStatus
+      summary: Read an organization's entitlement status for a resource
+      description: >-
+        Requires a session, scoped to the caller's own Organization — an
+        `organization_id` other than the caller's own is rejected
+        identically to an unknown one. Reports the resource's policy (finite,
+        capped-metered, metered or unlimited), the active count against a
+        finite policy, current-period usage against a metered one, and an
+        open downgrade selection window when one exists.
+      tags: [entitlements]
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: resource_key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The resource's current entitlement status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntitlementStatus"
+        "400":
+          description: resource_key does not name a resource this platform grants entitlements for.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: entitlement_validation_error
+                  message: resource_key is not a recognized resource.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: >-
+            The requested Organization is not the caller's own. Deliberately
+            indistinguishable from an unknown Organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{organization_id}/entitlements/{resource_key}/selection:
+    post:
+      operationId: finalizeEntitlementSelection
+      summary: Finalize which resources survive a plan-downgrade selection
+      description: >-
+        Requires a session, scoped to the caller's own Organization, and
+        entitlements:manage. Names exactly the resource ids to keep out of
+        an open downgrade's over-cap allocations; the rest are released.
+        Reachable only while the resource's downgrade selection window is
+        still open.
+      tags: [entitlements]
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: resource_key
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinalizeEntitlementSelectionRequest"
+      responses:
+        "204":
+          description: The selection was recorded.
+        "400":
+          description: >-
+            Validation error, malformed JSON body, or a kept_resource_ids
+            count that does not match the resource's post-downgrade limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The session's Member does not hold entitlements:manage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: >-
+            The requested Organization is not the caller's own, or there is
+            no open downgrade or grant for this resource.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The selection window for this downgrade is closed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: entitlement_selection_closed
+                  message: The selection window for this downgrade is closed.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
 
   /v1/billing/plans:
     get:
@@ -12198,6 +12790,82 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/staff/organizations/unserved-regions:
+    get:
+      operationId: listOrganizationsOnUnservedRegions
+      summary: List Organizations declaring a region the deployment does not serve
+      description: >-
+        Requires a StaffSession holding `residency:review`. Lists every
+        Organization whose declared data-residency region is outside the set
+        this deployment actually serves, so an operator can reconcile the
+        commitment with the customer.
+
+
+        The listing is read-only by design: a region is immutable after
+        creation, and an Organization carrying one the infrastructure does
+        not honor is reconciled by talking to the customer, not by rewriting
+        the row. `total` counts every matching Organization, not just the
+        page, and `served_regions` states what the listing was measured
+        against. On a deployment that serves everything its Organizations
+        declare, the listing is empty.
+
+
+        Each Organization the page returns is recorded as a staff read in
+        that Organization's own audit trail, per platform-staff-access.
+      tags: [organizations, platform-staff]
+      security:
+        - staffSessionAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: >-
+            Page size. Defaults to 50 when absent, zero, or above the
+            maximum of 200.
+          schema:
+            type: integer
+            minimum: 0
+        - name: offset
+          in: query
+          required: false
+          description: Rows to skip in the oldest-first ordering. Defaults to 0.
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: Organizations declaring a region the deployment does not serve.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnservedRegionOrganizationsResponse"
+              example:
+                organizations: []
+                total: 0
+                limit: 50
+                offset: 0
+                served_regions: [us]
+        "400":
+          description: A malformed `limit` or `offset`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: >-
+            No StaffSession was presented, or the presented one is invalid,
+            expired, revoked, or belongs to a disabled StaffMember.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The StaffMember does not hold `residency:review`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/staff/support/tickets:
     get:
       operationId: listStaffSupportTickets
@@ -12574,8 +13242,392 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/erasure-requests:
+    post:
+      operationId: requestErasure
+      summary: Request erasure of your own account and personal data
+      description: >-
+        Records and acknowledges an authenticated Member's request to erase
+        their account and personal data, and states the processing window
+        the request will be answered within (thirty days by default, per
+        ADR 0014). It does NOT erase anything: per
+        personal-data-lifecycle, erasure is a recorded request with a
+        stated window and a reported outcome per store, processed
+        afterwards by an operator holding `privacy:erase`.
+
+        Whose data is erased comes from the presented session, never from
+        the body — there is no field to name a subject — so this endpoint
+        cannot be pointed at another person. A Member who already has an
+        open request receives that one back rather than a second.
+
+        No permission is required beyond a valid session: asking for your
+        own data to be erased is not a privilege.
+      tags: [personal-data-lifecycle]
+      security:
+        - sessionAuth: []
+      responses:
+        "202":
+          description: >-
+            The request was recorded and acknowledged, with the stated
+            processing window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErasureRequest"
+        "401":
+          description: No session was presented, or the presented one is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/erasure-requests/current:
+    get:
+      operationId: getCurrentErasureRequest
+      summary: Read back your own erasure request
+      description: >-
+        Returns the requesting Member's most recent erasure request that
+        still names them. This is where a REFUSAL is read: when erasure is
+        refused because the Member is the only administrator of an
+        Organization with an active subscription, `refusal_reason` states
+        what must happen first and the options available.
+
+        A completed request is deliberately unreachable here, and by
+        construction rather than by a filter: completing an erasure clears
+        the member id the request was keyed by, so nothing is left to match
+        on. That is the point — the platform keeps no index of whom it has
+        erased.
+      tags: [personal-data-lifecycle]
+      security:
+        - sessionAuth: []
+      responses:
+        "200":
+          description: The Member's own erasure request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErasureRequest"
+        "401":
+          description: No session was presented, or the presented one is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: >-
+            The Member has no erasure request that still names them.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/staff/erasure-requests:
+    post:
+      operationId: recordContactErasureRequest
+      summary: Record an erasure request that arrived through the published contact
+      description: >-
+        Requires a StaffSession holding `privacy:erase`. Records a request
+        from a person who is not a Member and therefore has no account to
+        ask from inside the product, per personal-data-lifecycle's
+        "Erasure of a non-member" scenario: their records are located by
+        the contact details they supplied.
+
+        If the address does turn out to belong to an account, the request
+        covers that account too — the same stores, the same erasers.
+      tags: [personal-data-lifecycle, platform-staff]
+      security:
+        - staffSessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordContactErasureRequest"
+      responses:
+        "202":
+          description: The request was recorded and acknowledged.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErasureRequest"
+        "400":
+          description: No contact address was supplied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: >-
+            No StaffSession was presented, or the presented one is invalid,
+            expired, revoked, or belongs to a disabled StaffMember.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: >-
+            The StaffMember does not hold `privacy:erase`, or a
+            cookie-authenticated write arrived from an unapproved origin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/staff/erasure-requests/{erasure_request_id}:
+    get:
+      operationId: getErasureRequest
+      summary: Read one erasure request and its outcome report
+      description: >-
+        Requires a StaffSession holding `privacy:erase`. Returns the
+        request's status and, once processed, the per-store outcomes and
+        the rendered report naming what was deleted, what was anonymized
+        and what was retained with the reason for each.
+      tags: [personal-data-lifecycle, platform-staff]
+      security:
+        - staffSessionAuth: []
+      parameters:
+        - name: erasure_request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The erasure request and its outcome report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErasureRequest"
+        "401":
+          description: >-
+            No StaffSession was presented, or the presented one is invalid,
+            expired, revoked, or belongs to a disabled StaffMember.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The StaffMember does not hold `privacy:erase`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/staff/erasure-requests/{erasure_request_id}/process:
+    post:
+      operationId: processErasureRequest
+      summary: Process a recorded erasure request across every enumerated store
+      description: >-
+        Requires a StaffSession holding `privacy:erase`. Visits every store
+        in the enumerated erasure scope, records the outcome per store, and
+        clears the identifying input from the request record itself once
+        every store completed.
+
+        It is explicitly triggered rather than scheduled, per design.md:
+        erasure processing is manual-triggered at first so it cannot run
+        unattended before it is trusted.
+
+        Two outcomes are not success. If the requester is the only
+        administrator of an Organization with an active subscription the
+        whole request is REFUSED and nothing is erased, with
+        `refusal_reason` stating what must happen first. If any single
+        store fails, the request is recorded as `failed` with that store's
+        outcome naming the failure, and it keeps its subject so it can be
+        retried — it never reports a completeness it does not have.
+      tags: [personal-data-lifecycle, platform-staff]
+      security:
+        - staffSessionAuth: []
+      parameters:
+        - name: erasure_request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: >-
+            The processed request, carrying the per-store outcomes and the
+            rendered report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErasureRequest"
+        "401":
+          description: >-
+            No StaffSession was presented, or the presented one is invalid,
+            expired, revoked, or belongs to a disabled StaffMember.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: >-
+            The StaffMember does not hold `privacy:erase`, or a
+            cookie-authenticated write arrived from an unapproved origin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The request has already been processed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+
 components:
   schemas:
+    RecordContactErasureRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          description: >-
+            The contact address the request arrived from. Records are
+            located by it, canonically (trimmed and lower-cased).
+      additionalProperties: false
+    ErasureStoreOutcome:
+      type: object
+      required: [store, tables, disposition, records_affected]
+      properties:
+        store:
+          type: string
+          description: >-
+            One store in the enumerated erasure scope. The scope is
+            enumerated in exactly one place so a store added later cannot
+            be silently skipped.
+          enum:
+            - members
+            - member_access
+            - approval_requests
+            - visitor_journey
+            - visitor_consent
+            - leads
+            - audit_events
+            - flag_config_history
+            - support
+            - billing_charges
+            - billing_notifications
+            - identity_links
+        tables:
+          type: array
+          description: The database tables that store covers.
+          items:
+            type: string
+        disposition:
+          type: string
+          description: >-
+            What was done. `retained`, `not_applicable` and `failed`
+            always carry a reason.
+          enum: [deleted, anonymized, retained, not_applicable, failed]
+        records_affected:
+          type: integer
+          format: int64
+          description: >-
+            How many records the disposition applied to: deleted,
+            anonymized, or counted and kept. Zero for a not-applicable or
+            failed store.
+        reason:
+          type: string
+          description: >-
+            Why the records were kept, why the store held nothing
+            reachable, or why it failed.
+      additionalProperties: false
+    ErasureRequest:
+      type: object
+      description: >-
+        A recorded erasure request, its acknowledgement and — once
+        processed — the outcome per store.
+
+        It deliberately carries NO field naming the person: not the member
+        id it was recorded against, not the contact address. The
+        acknowledgement goes back to whoever already proved they are that
+        person, so echoing it would only make the response another copy of
+        what the request exists to erase. The stored record itself is
+        cleared of both the moment processing completes.
+      required:
+        - id
+        - origin
+        - status
+        - acknowledgement
+        - requested_at
+        - respond_by
+        - response_window_days
+        - processed_at
+        - outcomes
+      properties:
+        id:
+          type: string
+        origin:
+          type: string
+          description: >-
+            `member` for an authenticated in-product request, `contact` for
+            one recorded by an operator on behalf of a person with no
+            account.
+          enum: [member, contact]
+        status:
+          type: string
+          description: >-
+            `received` is recorded and awaiting processing. `completed` is
+            every store visited without failure, with the identifying input
+            cleared. `refused` is nothing erased, with `refusal_reason`
+            saying what must happen first. `failed` is at least one store
+            that could not be processed, kept retryable.
+          enum: [received, completed, refused, failed]
+        acknowledgement:
+          type: string
+          description: >-
+            The plain-language acknowledgement, stating the processing
+            window while the request is open.
+        requested_at:
+          type: string
+          format: date-time
+        respond_by:
+          type: string
+          format: date-time
+          description: >-
+            The deadline of the stated processing window, persisted when
+            the request was recorded so a later configuration change cannot
+            move a commitment already made.
+        response_window_days:
+          type: integer
+          description: The stated window in days, derived from this request's own timestamps.
+        processed_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the request finished processing, or null while still pending.
+        refusal_reason:
+          type: string
+          description: >-
+            Present only for a refused request: what must happen first, and
+            the options available.
+        outcomes:
+          type: array
+          description: One entry per enumerated store, in registry order.
+          items:
+            $ref: "#/components/schemas/ErasureStoreOutcome"
+        report:
+          type: string
+          description: >-
+            The rendered, human-readable report naming what was deleted,
+            what was anonymized and what was retained with the reason for
+            each. Empty until the request has been processed.
+      additionalProperties: false
     StatusResponse:
       type: object
       required: [status]
@@ -12946,6 +13998,13 @@ components:
             the visitor granted analytics consent. Optional: a submission
             without it is equally valid, and stitching the Lead to that
             visitor's journey never affects whether the Lead is persisted.
+        source:
+          type: string
+          maxLength: 100
+          description: >-
+            The specific page or tool that captured this lead (e.g.
+            "pricing_page", "migration_checker"), distinct from landing_url.
+            Optional.
 
     Lead:
       type: object
@@ -12974,6 +14033,8 @@ components:
           type: string
         referrer:
           type: string
+        source:
+          type: string
         locale:
           type: string
           enum: [en, pt-br]
@@ -12996,8 +14057,17 @@ components:
           maxLength: 80
           pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
         region:
+          description: >-
+            The declared data-residency region. The accepted set is the set
+            of regions this deployment actually serves, taken from its
+            `SERVED_REGIONS` configuration — not from this enumeration,
+            which mirrors it. This deployment serves `us` only: every byte
+            is stored in one Amazon Web Services United States region. A
+            recognized region it does not serve (for example `eu`) is
+            refused with `organization_region_not_served` rather than
+            accepted and quietly stored elsewhere.
           type: string
-          enum: [us, eu]
+          enum: [us]
 
     Organization:
       type: object
@@ -13010,6 +14080,16 @@ components:
         slug:
           type: string
         region:
+          description: >-
+            The data-residency region this Organization declared when it was
+            created. It is immutable. The set accepted at creation is
+            narrower than the set readable here: an Organization created
+            before a region was withdrawn still carries it, and those are
+            listed for reconciliation at
+            `GET /v1/staff/organizations/unserved-regions`. A region here is
+            a declared and audited commitment, not one enforced by separate
+            regional infrastructure — this deployment stores all data in one
+            Amazon Web Services United States region.
           type: string
           enum: [us, eu]
         created_at:
@@ -13018,6 +14098,34 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    UnservedRegionOrganizationsResponse:
+      description: >-
+        One page of Organizations declaring a data-residency region this
+        deployment does not serve, for operator reconciliation.
+      type: object
+      required: [organizations, total, limit, offset, served_regions]
+      properties:
+        organizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Organization"
+        total:
+          description: >-
+            The number of matching Organizations across the whole table, not
+            just this page, so a capped page discloses what it left behind.
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        served_regions:
+          description: >-
+            The regions this deployment actually serves, which is what
+            membership of this listing was measured against.
+          type: array
+          items:
+            type: string
 
     CreateOrganizationResponse:
       description: >-
@@ -13034,8 +14142,12 @@ components:
         slug:
           type: string
         region:
+          description: >-
+            The data-residency region assigned to the new Organization. See
+            the `Organization` schema's own `region` for what the commitment
+            means and where the data actually lives.
           type: string
-          enum: [us, eu]
+          enum: [us]
         created_at:
           type: string
           format: date-time
@@ -15038,7 +16150,7 @@ components:
             out-of-band operations with no API surface.
           items:
             type: string
-            enum: ["billing:refund", "support:view", "support:respond", "support:close"]
+            enum: ["billing:refund", "support:view", "support:respond", "support:close", "privacy:erase", "residency:review"]
 
     ConfirmStaffMagicLinkResponse:
       type: object
@@ -15180,6 +16292,50 @@ components:
             assignment, which is the default after just-in-time provisioning.
           items:
             type: string
+        terms:
+          type: object
+          required: [current_version, acceptance_required]
+          description: >-
+            The terms of service in force, and whether this Member still owes
+            an acceptance of it. Carried on the identity response rather than
+            on a second endpoint because the operator shell reads this on
+            every authenticated render, and a separate call would let an
+            authenticated screen paint before the answer arrived.
+
+
+            No acceptance timestamp and no previously-accepted version are
+            reported: the client only needs to know whether to ask. The
+            record itself is evidence held server-side.
+          properties:
+            current_version:
+              type: string
+              description: >-
+                The version marker of the terms of service currently in
+                force, empty on a deployment that publishes no terms. Clients
+                render this rather than restating a version of their own, so
+                the published document and the accepted version cannot drift
+                apart.
+            acceptance_required:
+              type: boolean
+              description: >-
+                True when this Member's recorded acceptance is for an earlier
+                version or for nothing at all. A Member provisioned by SCIM,
+                by an invite, by just-in-time OIDC login or by social signup
+                starts with no recorded acceptance, so this is true for all
+                of them until they have accepted.
+
+    AcceptTermsRequest:
+      type: object
+      required: [terms_version]
+      additionalProperties: false
+      description: >-
+        The version the caller is accepting. It is COMPARED against the
+        version in force, never stored as given: a stale browser cannot
+        record an acceptance of the document it happened to be showing.
+      properties:
+        terms_version:
+          type: string
+          minLength: 1
 
     GrantRoleRequest:
       type: object
@@ -16460,6 +17616,21 @@ components:
             and verified by the browser. No card data is ever sent to this
             API.
 
+    UpdateBillingDetailsRequest:
+      type: object
+      required: [billing_email, organization_legal_name, country, tax_id]
+      properties:
+        billing_email:
+          type: string
+        organization_legal_name:
+          type: string
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 country code.
+        tax_id:
+          type: string
+          description: The organization's tax identifier (e.g. CNPJ in Brazil).
+
     PaymentMethodSummary:
       type: object
       required: [brand]
@@ -16754,6 +17925,112 @@ components:
             collects a new payment method, even for an organization whose
             prior Subscription is canceled — it never reuses one.
 
+    EntitlementPolicy:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [finite, metered, capped_metered, unlimited]
+        limit:
+          type: integer
+          description: Present only for a finite policy.
+        included_amount:
+          type: integer
+          description: Present only for a metered or capped-metered policy.
+        period:
+          type: string
+          description: Present only for a metered or capped-metered policy.
+
+    EntitlementUsagePeriod:
+      type: object
+      required: [period_start, period_end, amount]
+      properties:
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        amount:
+          type: integer
+
+    EntitlementMeteredUsage:
+      type: object
+      required: [included_amount, period]
+      properties:
+        included_amount:
+          type: integer
+        period:
+          type: string
+        current_period:
+          $ref: "#/components/schemas/EntitlementUsagePeriod"
+
+    EntitlementDowngradeEvent:
+      type: object
+      required: [selection_deadline_at, lock_deadline_at, selection_method]
+      properties:
+        selection_deadline_at:
+          type: string
+          format: date-time
+        lock_deadline_at:
+          type: string
+          format: date-time
+        selection_method:
+          type: string
+
+    EntitlementAllocation:
+      type: object
+      required: [resource_id, status, allocated_at]
+      properties:
+        resource_id:
+          type: string
+        status:
+          type: string
+        allocated_at:
+          type: string
+          format: date-time
+
+    EntitlementStatus:
+      type: object
+      required: [resource_key, policy, active_count]
+      properties:
+        resource_key:
+          type: string
+        policy:
+          $ref: "#/components/schemas/EntitlementPolicy"
+        active_count:
+          type: integer
+          description: 0 for a metered grant, which has no allocations to count.
+        open_downgrade_event:
+          $ref: "#/components/schemas/EntitlementDowngradeEvent"
+        pending_selection:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntitlementAllocation"
+        metered_usage:
+          $ref: "#/components/schemas/EntitlementMeteredUsage"
+
+    FinalizeEntitlementSelectionRequest:
+      type: object
+      required: [kept_resource_ids]
+      properties:
+        kept_resource_ids:
+          type: array
+          items:
+            type: string
+
+    CreateSetupIntentResponse:
+      type: object
+      required: [client_secret]
+      properties:
+        client_secret:
+          type: string
+          description: >-
+            The payment gateway's setup-intent client secret. The frontend
+            confirms it directly against the gateway; it never reaches this
+            API again.
+
     CreateSupportTicketRequest:
       type: object
       required: [kind, description]
@@ -17024,6 +18301,13 @@ tags:
       and requires only a valid session. Catalog authoring (creating or
       publishing a plan, plan version or price) is deliberately not
       exposed here — it stays seed/migration-driven.
+  - name: entitlements
+    description: >-
+      Reading an Organization's entitlement status per resource (policy,
+      active count, metered usage, an open plan-downgrade selection window)
+      and finalizing which resources survive a downgrade. Both endpoints
+      require a session scoped to the caller's own Organization; finalizing
+      a selection additionally requires entitlements:manage.
   - name: health
     description: Process liveness and readiness signals.
   - name: visitor-journeys
@@ -17052,8 +18336,22 @@ tags:
       confirming a staff magic link, and reading the signed-in StaffMember.
       A StaffMember is not scoped to any Organization and is a distinct
       identity from a Member, with its own session, its own cookie
-      (`rf_staff_session`) and its own small permission catalog (currently
-      just `billing:refund`).
+      (`rf_staff_session`) and its own small permission catalog
+      (`billing:refund`, `support:view`, `support:respond`,
+      `support:close`, `privacy:erase`, `residency:review`).
+  - name: personal-data-lifecycle
+    description: >-
+      Erasure of a person's personal data: the in-product request an
+      authenticated Member makes for their own account, the request an
+      operator records on behalf of a person with no account, and the
+      staff-triggered processing that visits every store in the enumerated
+      erasure scope and reports the outcome of each.
+
+      Erasure is a recorded request with a stated processing window, not a
+      synchronous delete: it crosses billing records under a retention
+      obligation, an audit trail whose integrity depends on not vanishing,
+      and an Organization that may have other members and an active
+      subscription.
 
 
       There is deliberately no endpoint here that creates a StaffMember,
