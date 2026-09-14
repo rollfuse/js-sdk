@@ -65,6 +65,11 @@ describe("RollfuseProvider — client-driven mode", () => {
 
   it("useFlag reflects an update after the client's Configuration refreshes", async () => {
     vi.useFakeTimers();
+    // Neutralizes sdk-browser's task 9.2 jitter so the exact
+    // advanceTimersByTimeAsync(1_000) below reliably crosses the
+    // scheduled poll — see configuration-client.test.ts's identical
+    // rationale in sdk-browser itself.
+    vi.spyOn(Math, "random").mockReturnValue(0);
 
     const fetchImpl = vi
       .fn()
@@ -104,6 +109,7 @@ describe("RollfuseProvider — client-driven mode", () => {
 
     client.stop();
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("renders with a fallback (never throws) before the client's first Configuration fetch resolves", () => {

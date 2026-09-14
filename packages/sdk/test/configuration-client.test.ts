@@ -28,12 +28,21 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+let randomSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   vi.useFakeTimers();
+  // Neutralizes task 9.2's jitter for every test that doesn't explicitly
+  // test it: with Math.random() pinned to 0, withJitter(base) === base,
+  // so every existing exact-interval advanceTimersByTimeAsync(...)
+  // assertion still holds. The jitter tests below call
+  // randomSpy.mockRestore() to get real randomness back.
+  randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("ConfigurationClient", () => {
@@ -575,5 +584,200 @@ describe("ConfigurationClient", () => {
     await vi.advanceTimersByTimeAsync(1_000);
 
     expect(fetchImpl.mock.calls.length).toBe(callsAtStop);
+  });
+
+  describe("Polling Revalidates And Does Not Synchronize", () => {
+    it("presents the last ETag via If-None-Match, and a 304 leaves the cache in place without replacing it (task 9.1)", async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(validConfig), {
+            status: 200,
+            headers: { "Content-Type": "application/json", ETag: '"v3"' },
+          }),
+        )
+        .mockResolvedValueOnce(new Response(null, { status: 304 }));
+
+      const onConfigRefreshed = vi.fn();
+      const onConfigRefreshError = vi.fn();
+
+      const client = new ConfigurationClient({
+        baseUrl: "http://api.test",
+        credential: "cred",
+        refreshIntervalMs: 10,
+        fetchImpl,
+        onConfigRefreshed,
+        onConfigRefreshError,
+      });
+
+      await client.start();
+      expect(onConfigRefreshed).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(10);
+
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+      const [, secondInit] = fetchImpl.mock.calls[1] as [string, { headers: Record<string, string> }];
+      expect(secondInit.headers["If-None-Match"]).toBe('"v3"');
+
+      // A 304 is a successful poll, NOT an error (a mutation that made
+      // this fall through to the generic `!response.ok` error branch
+      // instead of a dedicated 304 success branch would still leave the
+      // cache untouched and onConfigRefreshed uncalled, so those alone
+      // wouldn't catch it — this is the assertion that actually
+      // distinguishes the two).
+      expect(onConfigRefreshError).not.toHaveBeenCalled();
+      // Nothing changed, so onConfigRefreshed isn't called a second time.
+      expect(onConfigRefreshed).toHaveBeenCalledTimes(1);
+      expect(client.getConfig()).toEqual(validConfig);
+
+      client.stop();
+    });
+
+    it("a 304 still counts as a successful poll for isStale()/maxConfigAgeMs purposes", async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ ...validConfig }, 200))
+        .mockResolvedValueOnce(new Response(null, { status: 304 }));
+
+      const client = new ConfigurationClient({
+        baseUrl: "http://api.test",
+        credential: "cred",
+        refreshIntervalMs: 100,
+        maxConfigAgeMs: 150,
+        fetchImpl,
+      });
+
+      await client.start();
+
+      await vi.advanceTimersByTimeAsync(100); // the 304
+
+      // Without the 304 extending lastFetchedAt, this would already be stale.
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(client.isStale()).toBe(false);
+
+      client.stop();
+    });
+
+    it("applies randomized jitter on top of the refresh interval, so successive scheduled delays differ (task 9.2)", async () => {
+      randomSpy.mockRestore(); // real randomness for this test specifically
+
+      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+      // A fresh Response per call: mockResolvedValue would return the
+      // same Response instance every time, and a Response body can only
+      // be read once — a second .json() on a reused instance throws,
+      // which would make every poll after the first look like a failure.
+      const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse(validConfig)));
+
+      const client = new ConfigurationClient({
+        baseUrl: "http://api.test",
+        credential: "cred",
+        refreshIntervalMs: 10_000,
+        fetchImpl,
+      });
+
+      await client.start();
+
+      const delaysScheduledAtBase10000 = () =>
+        setTimeoutSpy.mock.calls
+          .map(([, delay]) => delay as number)
+          .filter((delay) => delay >= 10_000 && delay < 12_000); // the poll timer, not the (unrelated) init timer
+
+      await vi.advanceTimersByTimeAsync(10_000 * 1.2); // outlasts the jittered delay regardless of its exact value
+      await vi.advanceTimersByTimeAsync(10_000 * 1.2);
+      await vi.advanceTimersByTimeAsync(10_000 * 1.2);
+
+      const delays = delaysScheduledAtBase10000();
+
+      expect(delays.length).toBeGreaterThanOrEqual(3);
+      expect(new Set(delays).size).toBeGreaterThan(1); // not every scheduled delay is identical
+      for (const delay of delays) {
+        expect(delay).toBeGreaterThanOrEqual(10_000); // task 9.2: jitter only adds, never polls less often than configured
+      }
+
+      client.stop();
+    });
+
+    it("applies randomized jitter on top of retry backoff too, so many clients recovering together don't retry in lockstep (task 9.2)", async () => {
+      // Backoff itself doubles on every successive retry (base 1000ms,
+      // 2000ms, 4000ms, ...), so two retries from the SAME client never
+      // land at the same nominal delay to compare jitter against each
+      // other. Instead, several independent clients each experiencing
+      // their own FIRST failure (same nominal base backoff, 1000ms) is
+      // what proves jitter spreads them apart — sdk-conformance's own
+      // "Many clients recover together" scenario.
+      randomSpy.mockRestore();
+
+      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+      const fetchImpl = vi.fn().mockRejectedValue(new Error("network unreachable"));
+
+      const clients = Array.from(
+        { length: 5 },
+        () => new ConfigurationClient({ baseUrl: "http://api.test", credential: "cred", initTimeoutMs: 60_000, fetchImpl }),
+      );
+
+      for (const client of clients) {
+        void client.start().catch(() => undefined);
+      }
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      const firstBackoffDelays = setTimeoutSpy.mock.calls
+        .map(([, delay]) => delay as number)
+        .filter((delay) => delay >= 1_000 && delay < 1_200); // the first backoff (base 1000ms), not the 60s init timer
+
+      expect(firstBackoffDelays.length).toBe(5);
+      expect(new Set(firstBackoffDelays).size).toBeGreaterThan(1); // not every client's jittered delay landed the same
+
+      for (const delay of firstBackoffDelays) {
+        expect(delay).toBeGreaterThanOrEqual(1_000); // task 9.2: jitter only adds, never retries sooner than the computed backoff
+      }
+
+      for (const client of clients) {
+        client.stop();
+      }
+    });
+
+    it("uses the platform's advised poll_interval_seconds in preference to its own default when refreshIntervalMs isn't set (task 9.3)", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ...validConfig, poll_interval_seconds: 5 }));
+
+      const client = new ConfigurationClient({
+        baseUrl: "http://api.test",
+        credential: "cred",
+        // No refreshIntervalMs: falls back to the platform's advised 5s,
+        // not this class's own 30s default.
+        fetchImpl,
+      });
+
+      await client.start();
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+      client.stop();
+    });
+
+    it("an explicitly configured refreshIntervalMs still wins over the platform's advised interval", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ ...validConfig, poll_interval_seconds: 5 }));
+
+      const client = new ConfigurationClient({
+        baseUrl: "http://api.test",
+        credential: "cred",
+        refreshIntervalMs: 20_000, // explicit — wins over the advised 5s
+        fetchImpl,
+      });
+
+      await client.start();
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(fetchImpl).toHaveBeenCalledTimes(1); // not yet — the explicit 20s hasn't elapsed
+
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+      client.stop();
+    });
   });
 });

@@ -27,6 +27,13 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 const DEFAULT_DEDUPE_WINDOW_MS = 60_000;
 /** None of an identity's fields can validly contain a NUL byte, so unlike a space or comma this can never collide two distinct identities into the same key. */
 const DEDUPE_KEY_SEPARATOR = String.fromCharCode(0);
+/**
+ * The platform's declared maximum for SubmitExposureEventsRequest.events
+ * (apps/api/openapi/openapi.yaml's ExposureEventSubmission maxItems) — see
+ * flush()'s own doc comment for why exceeding it here would be a real
+ * failure mode, not just a style preference.
+ */
+const PLATFORM_MAX_EXPOSURE_BATCH_SIZE = 100;
 
 export interface ExposureQueueOptions {
   baseUrl: string;
@@ -276,10 +283,18 @@ export class ExposureQueue {
   }
 
   /**
-   * Submits every currently queued event in a single request. On failure,
-   * the batch is dropped rather than retried or re-queued: retrying risks
-   * unbounded queue growth under sustained platform unavailability, and
-   * exposure recording is already best-effort server-side.
+   * Submits every currently queued event, chunked to the platform's
+   * declared batch limit (task 9.4): `batchSize` can be configured above
+   * that limit, and even at the default, a queue whose flush was delayed
+   * (task 7.6's concurrent-flush guard) can accumulate more than one
+   * batch's worth before it runs — POSTing all of it in one oversized
+   * request would be rejected outright (400 `exposure_submission_batch_
+   * too_large`) rather than partially accepted. Each chunk is submitted
+   * as its own request, sequentially; one chunk failing doesn't stop the
+   * others — each is dropped independently rather than retried or
+   * re-queued: retrying risks unbounded queue growth under sustained
+   * platform unavailability, and exposure recording is already
+   * best-effort server-side.
    *
    * `keepalive` (task 8.1) requests a transport that survives page
    * dismissal: the browser guarantees a `fetch` with `keepalive: true`
@@ -297,6 +312,12 @@ export class ExposureQueue {
     const batch = this.queue;
     this.queue = [];
 
+    for (const batchChunk of toChunks(batch, PLATFORM_MAX_EXPOSURE_BATCH_SIZE)) {
+      await this.submitChunk(batchChunk, options);
+    }
+  }
+
+  private async submitChunk(chunk: ExposureEventSubmission[], options: { keepalive?: boolean }): Promise<void> {
     try {
       const trace = await resolveTraceHeaders();
       const headers = applyTraceHeaders(
@@ -307,7 +328,7 @@ export class ExposureQueue {
         method: "POST",
         headers,
         signal: AbortSignal.timeout(this.requestTimeoutMs),
-        body: JSON.stringify({ events: batch }),
+        body: JSON.stringify({ events: chunk }),
         keepalive: options.keepalive,
       });
 
@@ -325,4 +346,15 @@ export class ExposureQueue {
     this.reportAccumulatedDrops();
     await this.flush();
   }
+}
+
+/** Splits items into consecutive groups of at most size each, preserving order (task 9.4). */
+function toChunks<T>(items: readonly T[], size: number): T[][] {
+  const chunks: T[][] = [];
+
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+
+  return chunks;
 }

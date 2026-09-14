@@ -394,4 +394,69 @@ describe("ExposureQueue", () => {
 
     queue.stop();
   });
+
+  it("chunks a flush exceeding the platform's declared batch limit into multiple requests, none oversized (task 9.4)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ accepted: 1 }));
+
+    // batchSize (250) deliberately configured above the platform's
+    // declared 100-item limit: an integrator can do this, and even the
+    // default (100) queue could still accumulate more than one batch's
+    // worth before a delayed flush runs (task 7.6). A single request
+    // carrying all 250 would be rejected outright by the platform
+    // (400 exposure_submission_batch_too_large) rather than partially
+    // accepted.
+    const queue = new ExposureQueue({
+      baseUrl: "http://api.test",
+      credential: "cred",
+      batchSize: 1_000_000, // never auto-flush during this test; flush() is called explicitly
+      dedupeWindowMs: 0,
+      fetchImpl,
+    });
+
+    for (let i = 0; i < 250; i++) {
+      queue.enqueue({ ...sampleEvent, subjectKey: `user_${i}` });
+    }
+
+    await queue.flush();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(3); // 100 + 100 + 50
+
+    let totalEvents = 0;
+
+    for (const call of fetchImpl.mock.calls) {
+      const body = JSON.parse((call[1] as RequestInit).body as string);
+
+      expect(body.events.length).toBeLessThanOrEqual(100);
+      totalEvents += body.events.length;
+    }
+
+    expect(totalEvents).toBe(250);
+  });
+
+  it("one chunk failing to submit doesn't prevent the others from being attempted (task 9.4)", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "boom" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ accepted: 50 }));
+
+    const onExposureSubmitError = vi.fn();
+
+    const queue = new ExposureQueue({
+      baseUrl: "http://api.test",
+      credential: "cred",
+      batchSize: 1_000_000, // never auto-flush during this test; flush() is called explicitly
+      dedupeWindowMs: 0,
+      fetchImpl,
+      onExposureSubmitError,
+    });
+
+    for (let i = 0; i < 150; i++) {
+      queue.enqueue({ ...sampleEvent, subjectKey: `user_${i}` });
+    }
+
+    await queue.flush();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(onExposureSubmitError).toHaveBeenCalledTimes(1); // only the first chunk failed
+  });
 });
