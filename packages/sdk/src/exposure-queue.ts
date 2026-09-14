@@ -8,6 +8,12 @@ import { safeInvoke } from "./safe-invoke.js";
 const DEFAULT_CAPACITY = 1_000;
 const DEFAULT_BATCH_SIZE = 100;
 const DEFAULT_FLUSH_INTERVAL_MS = 5_000;
+/**
+ * Default width of the window an observation identity (flag, subject,
+ * served variation, configuration version) is reported once within — see
+ * dedupeWindowMs's own doc comment.
+ */
+const DEFAULT_DEDUPE_WINDOW_MS = 60_000;
 /** Default undici pool timeouts for the flush fetch — see design.md Decision 3. */
 const DEFAULT_HEADERS_TIMEOUT_MS = 10_000;
 const DEFAULT_BODY_TIMEOUT_MS = 10_000;
@@ -19,6 +25,8 @@ const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
  * blocking subsequent flushes.
  */
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+/** None of an identity's fields can validly contain a NUL byte, so unlike a space or comma this can never collide two distinct identities into the same key. */
+const DEDUPE_KEY_SEPARATOR = String.fromCharCode(0);
 
 export interface ExposureQueueOptions {
   baseUrl: string;
@@ -43,6 +51,19 @@ export interface ExposureQueueOptions {
    * integrator injected. Default 10s.
    */
   requestTimeoutMs?: number;
+  /**
+   * Width of the window an observation identity (flag, subject, served
+   * variation, configuration version) is reported once within, per
+   * design.md's "Deduplication is by observation identity" decision and
+   * sdk-conformance's "Exposure Is Reported Once Per Distinct
+   * Observation" requirement. A repeated evaluation with the same
+   * identity inside the window is not re-enqueued; once the window
+   * elapses since the identity was last reported, the next matching
+   * evaluation is treated as a new observation. A changed variation or
+   * configuration version is always a different identity, regardless of
+   * timing. Default 60s.
+   */
+  dedupeWindowMs?: number;
   onExposureDropped?: (count: number) => void;
   onExposureSubmitError?: (error: unknown) => void;
 }
@@ -64,6 +85,10 @@ export interface QueuedExposure {
  * drops the new event rather than blocking or growing unbounded, and a
  * failed batch submission is dropped without retry rather than risking
  * unbounded queue growth under sustained platform unavailability.
+ *
+ * Deduplicates by observation identity within a bounded window (task
+ * 7.1), and guards against issuing more than one flush request at a time
+ * (task 7.6) — see dedupeWindowMs and runFlush's own doc comments.
  */
 export class ExposureQueue {
   private readonly baseUrl: string;
@@ -73,6 +98,7 @@ export class ExposureQueue {
   private readonly flushIntervalMs: number;
   private readonly fetchImpl: typeof fetch;
   private readonly requestTimeoutMs: number;
+  private readonly dedupeWindowMs: number;
   /** Only set when this instance created its own pooled fetch — never closes a caller-supplied fetchImpl it doesn't own. */
   private readonly ownedPooledFetch: PooledFetch | undefined;
   private readonly onExposureDropped: ((count: number) => void) | undefined;
@@ -80,6 +106,30 @@ export class ExposureQueue {
 
   private queue: ExposureEventSubmission[] = [];
   private timer: ReturnType<typeof setInterval> | undefined;
+  /**
+   * Last time (epoch ms) each observation identity was actually enqueued.
+   * Swept on every flush tick so an identity that stops recurring doesn't
+   * pin memory forever — see pruneDedupeWindow.
+   */
+  private readonly lastReportedAt = new Map<string, number>();
+  /**
+   * Capacity drops accumulated since the last flush tick, reported as one
+   * aggregated `onExposureDropped(count)` call per tick rather than once
+   * per dropped event — sdk-conformance's "Sustained high-volume
+   * evaluation" scenario requires drops to be counted and reported, but
+   * calling an integrator callback once per event under a drop storm is
+   * itself a destabilization risk, the same concern `safeInvoke` guards
+   * against, just at the call-frequency level instead of per-call safety.
+   */
+  private droppedSinceLastReport = 0;
+  /**
+   * True while a flush's own submission (the fetchImpl call) is in
+   * flight. Guards against a queue above batchSize issuing more than one
+   * concurrent request (task 7.6): the periodic timer and enqueue's own
+   * batchSize trigger can otherwise both call runFlush while an earlier
+   * flush's network request hasn't resolved yet.
+   */
+  private flushing = false;
 
   constructor(options: ExposureQueueOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
@@ -88,6 +138,7 @@ export class ExposureQueue {
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
     this.flushIntervalMs = options.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS;
+    this.dedupeWindowMs = options.dedupeWindowMs ?? DEFAULT_DEDUPE_WINDOW_MS;
 
     if (options.fetchImpl) {
       this.fetchImpl = options.fetchImpl;
@@ -125,11 +176,62 @@ export class ExposureQueue {
    * every failure path), but an unawaited async call with no handler at
    * all becomes an unhandled rejection if a future change ever
    * reintroduces one; this is that backstop.
+   *
+   * Also sweeps expired dedupe entries and reports accumulated drops on
+   * every call (task 7.1/7.5), and guards concurrent flush requests
+   * (task 7.6): a flush already in flight is left alone rather than
+   * starting a second concurrent request for whatever has accumulated
+   * since. Once it settles, if the queue has climbed back to batchSize in
+   * the meantime, immediately triggers another flush rather than waiting
+   * out the rest of the timer interval.
    */
   private runFlush(): void {
-    this.flush().catch((error: unknown) => {
-      safeInvoke(this.onExposureSubmitError, error);
-    });
+    this.pruneDedupeWindow();
+    this.reportAccumulatedDrops();
+
+    if (this.flushing) {
+      return;
+    }
+
+    this.flushing = true;
+
+    this.flush()
+      .catch((error: unknown) => {
+        safeInvoke(this.onExposureSubmitError, error);
+      })
+      .finally(() => {
+        this.flushing = false;
+
+        if (this.queue.length >= this.batchSize) {
+          this.runFlush();
+        }
+      });
+  }
+
+  private reportAccumulatedDrops(): void {
+    if (this.droppedSinceLastReport === 0) {
+      return;
+    }
+
+    const count = this.droppedSinceLastReport;
+    this.droppedSinceLastReport = 0;
+
+    safeInvoke(this.onExposureDropped, count);
+  }
+
+  /** Removes dedupe entries whose window has elapsed, bounding memory for identities that stop recurring. */
+  private pruneDedupeWindow(): void {
+    const now = Date.now();
+
+    for (const [key, reportedAt] of this.lastReportedAt) {
+      if (now - reportedAt >= this.dedupeWindowMs) {
+        this.lastReportedAt.delete(key);
+      }
+    }
+  }
+
+  private dedupeKey(event: QueuedExposure): string {
+    return [event.flagKey, event.subjectKey, event.variationKey, event.configVersion].join(DEDUPE_KEY_SEPARATOR);
   }
 
   /** Stops the periodic flush timer without flushing. */
@@ -141,16 +243,36 @@ export class ExposureQueue {
   }
 
   /**
-   * Enqueues one exposure for later submission. Never blocks: a full
-   * queue drops the new event and reports it via `onExposureDropped`
-   * rather than growing unbounded or blocking the caller.
+   * Enqueues one exposure for later submission. Never blocks.
+   *
+   * Deduplicated by observation identity (flag, subject, served
+   * variation, configuration version) within `dedupeWindowMs` (task 7.1):
+   * a repeat within the window is silently skipped rather than enqueued
+   * again, matching sdk-conformance's "The same evaluation repeats"
+   * scenario. A changed variation or configuration version is always a
+   * different identity (task 7.2), so it is never skipped regardless of
+   * timing.
+   *
+   * A full queue drops the new event; drops are accumulated and reported
+   * in aggregate via `onExposureDropped` on the next flush tick (task
+   * 7.5) rather than growing the queue unbounded or blocking the caller.
    */
   enqueue(event: QueuedExposure): void {
+    const key = this.dedupeKey(event);
+    const lastReportedAt = this.lastReportedAt.get(key);
+    const now = Date.now();
+
+    if (lastReportedAt !== undefined && now - lastReportedAt < this.dedupeWindowMs) {
+      return;
+    }
+
     if (this.queue.length >= this.capacity) {
-      safeInvoke(this.onExposureDropped, 1);
+      this.droppedSinceLastReport += 1;
 
       return;
     }
+
+    this.lastReportedAt.set(key, now);
 
     this.queue.push({
       flag_key: event.flagKey,
@@ -204,13 +326,15 @@ export class ExposureQueue {
   }
 
   /**
-   * Stops the flush timer, submits any remaining queued events, then
-   * releases the underlying undici connection pool (only if this instance
-   * created its own — a no-op when a caller-supplied `fetchImpl` is in
-   * use, since its lifecycle belongs to whoever constructed it).
+   * Stops the flush timer, submits any remaining queued events, reports
+   * any drops still pending, then releases the underlying undici
+   * connection pool (only if this instance created its own — a no-op
+   * when a caller-supplied `fetchImpl` is in use, since its lifecycle
+   * belongs to whoever constructed it).
    */
   async close(): Promise<void> {
     this.stop();
+    this.reportAccumulatedDrops();
     await this.flush();
     await this.ownedPooledFetch?.close();
   }

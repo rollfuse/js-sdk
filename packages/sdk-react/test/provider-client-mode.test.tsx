@@ -150,4 +150,66 @@ describe("RollfuseProvider — client-driven mode", () => {
 
     client.stop();
   });
+
+  it("rebuilding the snapshot without a change in outcome produces no additional exposure (task 7.3)", async () => {
+    vi.useFakeTimers();
+
+    // Every poll returns the identical Configuration (same version): a
+    // successful revalidation with nothing changed, not a real config
+    // update. Before task 7.1's dedup, each of these still re-ran
+    // getSnapshot() (context.tsx's subscribe callback fires on every
+    // successful refresh, not only a version bump) and therefore
+    // re-enqueued an exposure via evaluateAll -> trackExposure, despite
+    // the served variation never having changed — exactly the "one tab
+    // open for ten minutes emits roughly twenty duplicate exposures per
+    // flag" bug proposal.md describes.
+    const exposureBatches: unknown[][] = [];
+    const fetchImpl: typeof fetch = vi.fn((input, init) => {
+      const url = typeof input === "string" ? input : input.toString();
+
+      if (url.endsWith("/v1/exposure-events")) {
+        const body = JSON.parse(init?.body as string);
+        exposureBatches.push(body.events);
+
+        return Promise.resolve(jsonResponse({ accepted: body.events.length }));
+      }
+
+      return Promise.resolve(jsonResponse(baseConfig));
+    });
+
+    const client = new RollfusePublicClient({
+      baseUrl: "http://api.test",
+      publicCredential: "pub_cred",
+      refreshIntervalMs: 1_000,
+      exposureBatchSize: 1_000_000, // never auto-flush on batch size during this test
+      fetchImpl,
+    });
+
+    await act(async () => {
+      await client.start();
+    });
+
+    render(
+      <RollfuseProvider client={client} subjectKey="user_1" attributes={{ plan: "enterprise" }}>
+        <ReadFlag flagKey="checkout-redesign" />
+      </RollfuseProvider>,
+    );
+
+    // Five more successful, content-unchanged refresh cycles — each
+    // re-runs getSnapshot() and therefore evaluateAll() again.
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+    }
+
+    await act(async () => {
+      await client.close();
+    });
+
+    const totalExposuresSubmitted = exposureBatches.flat().length;
+    expect(totalExposuresSubmitted).toBe(1);
+
+    vi.useRealTimers();
+  });
 });
