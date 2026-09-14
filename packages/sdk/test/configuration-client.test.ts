@@ -460,6 +460,56 @@ describe("ConfigurationClient", () => {
     }
   });
 
+  it("applies a deadline even to an injected transport, per its own AbortSignal (task 4.2)", async () => {
+    // AbortSignal.timeout's internal timer is not hooked by vitest's fake
+    // timers (confirmed: with vi.useFakeTimers() active, advancing fake
+    // time never fires the abort at all), so this one test runs under
+    // real time instead, with a short real deadline. Manually verified:
+    // removing the signal from the fetchImpl call made this test itself
+    // fail (0 calls instead of 1); restored before committing.
+    vi.useRealTimers();
+
+    try {
+      // Simulates a well-behaved custom transport: it honors the
+      // `signal` this library passes rather than enforcing any deadline
+      // of its own, exactly the case sdk-conformance's "A transport is
+      // injected" scenario targets — an integrator-supplied fetchImpl
+      // must still get this library's own deadline, not only whatever
+      // (if anything) that transport enforces by itself.
+      const hangingFetchImpl: typeof fetch = vi.fn((_url, init) => {
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = (init as RequestInit).signal;
+
+          signal?.addEventListener("abort", () => {
+            reject(signal.reason);
+          });
+        });
+      });
+
+      const onConfigRefreshError = vi.fn();
+
+      const client = new ConfigurationClient({
+        baseUrl: "http://api.test",
+        credential: "cred",
+        requestTimeoutMs: 50,
+        fetchImpl: hangingFetchImpl,
+        onConfigRefreshError,
+      });
+
+      const started = client.start();
+
+      started.catch(() => undefined);
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(onConfigRefreshError).toHaveBeenCalledTimes(1);
+
+      client.stop();
+    } finally {
+      vi.useFakeTimers();
+    }
+  });
+
   it("stop() prevents any further polling", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
 

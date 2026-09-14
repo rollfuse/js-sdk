@@ -24,6 +24,13 @@ const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
  * "A transient failure inside the bound" scenario.
  */
 const DEFAULT_INIT_TIMEOUT_MS = 15_000;
+/**
+ * Default deadline applied to every GET /v1/config request via
+ * AbortSignal.timeout, regardless of whether fetchImpl is this class's
+ * own pooled fetch or one the integrator injected — see
+ * requestTimeoutMs's own doc comment.
+ */
+const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 
 export interface ConfigurationClientOptions {
   /** The platform API's base URL, e.g. "https://api.rollfuse.com". */
@@ -60,6 +67,17 @@ export interface ConfigurationClientOptions {
   headersTimeoutMs?: number;
   bodyTimeoutMs?: number;
   connectTimeoutMs?: number;
+  /**
+   * Deadline applied to every GET /v1/config request via
+   * `AbortSignal.timeout`, in addition to (not instead of)
+   * `headersTimeoutMs`/`bodyTimeoutMs`/`connectTimeoutMs`. Unlike those,
+   * which only bound this class's own pooled fetch, this applies
+   * regardless of which `fetchImpl` is in use — per sdk-conformance's "A
+   * transport is injected" scenario, an integrator-supplied transport
+   * gets this library's own deadline too, not only whatever (if
+   * anything) that transport enforces on its own. Default 10s.
+   */
+  requestTimeoutMs?: number;
   /** Called after each successful refresh, with the new Configuration Version. */
   onConfigRefreshed?: (version: number) => void;
   /** Called after each failed or invalid refresh attempt. */
@@ -96,6 +114,7 @@ export class ConfigurationClient {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private initTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly initTimeoutMs: number;
+  private readonly requestTimeoutMs: number;
   private started = false;
   private stopped = false;
   /** True once initialization has terminally failed (a rejected credential): pollLoop stops scheduling further retries, since retrying can only reproduce the same rejection. */
@@ -112,6 +131,7 @@ export class ConfigurationClient {
     this.refreshIntervalMs = options.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS;
     this.maxConfigAgeMs = options.maxConfigAgeMs;
     this.initTimeoutMs = options.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;
+    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 
     if (options.fetchImpl) {
       this.fetchImpl = options.fetchImpl;
@@ -277,7 +297,10 @@ export class ConfigurationClient {
     try {
       const trace = await resolveTraceHeaders();
       const headers = applyTraceHeaders({ Authorization: `Bearer ${this.credential}` }, trace);
-      const response = await this.fetchImpl(`${this.baseUrl}/v1/config`, { headers });
+      const response = await this.fetchImpl(`${this.baseUrl}/v1/config`, {
+        headers,
+        signal: AbortSignal.timeout(this.requestTimeoutMs),
+      });
 
       if (response.status === 401 || response.status === 403) {
         // Per sdk-conformance's "The credential is rejected" scenario:

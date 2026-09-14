@@ -12,6 +12,13 @@ const DEFAULT_FLUSH_INTERVAL_MS = 5_000;
 const DEFAULT_HEADERS_TIMEOUT_MS = 10_000;
 const DEFAULT_BODY_TIMEOUT_MS = 10_000;
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
+/**
+ * Deadline applied to every flush request via AbortSignal.timeout,
+ * regardless of which fetchImpl is in use — see requestTimeoutMs's own
+ * doc comment. A hung flush is abandoned once this elapses rather than
+ * blocking subsequent flushes.
+ */
+const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 
 export interface ExposureQueueOptions {
   baseUrl: string;
@@ -28,6 +35,14 @@ export interface ExposureQueueOptions {
   headersTimeoutMs?: number;
   bodyTimeoutMs?: number;
   connectTimeoutMs?: number;
+  /**
+   * Deadline applied to every flush request via `AbortSignal.timeout`, in
+   * addition to (not instead of)
+   * `headersTimeoutMs`/`bodyTimeoutMs`/`connectTimeoutMs` — applies
+   * regardless of which `fetchImpl` is in use, including one the
+   * integrator injected. Default 10s.
+   */
+  requestTimeoutMs?: number;
   onExposureDropped?: (count: number) => void;
   onExposureSubmitError?: (error: unknown) => void;
 }
@@ -57,6 +72,7 @@ export class ExposureQueue {
   private readonly batchSize: number;
   private readonly flushIntervalMs: number;
   private readonly fetchImpl: typeof fetch;
+  private readonly requestTimeoutMs: number;
   /** Only set when this instance created its own pooled fetch — never closes a caller-supplied fetchImpl it doesn't own. */
   private readonly ownedPooledFetch: PooledFetch | undefined;
   private readonly onExposureDropped: ((count: number) => void) | undefined;
@@ -69,6 +85,7 @@ export class ExposureQueue {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.credential = options.credential;
     this.capacity = options.capacity ?? DEFAULT_CAPACITY;
+    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
     this.flushIntervalMs = options.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS;
 
@@ -174,6 +191,7 @@ export class ExposureQueue {
       const response = await this.fetchImpl(`${this.baseUrl}/v1/exposure-events`, {
         method: "POST",
         headers,
+        signal: AbortSignal.timeout(this.requestTimeoutMs),
         body: JSON.stringify({ events: batch }),
       });
 
