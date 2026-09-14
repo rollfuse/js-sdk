@@ -357,7 +357,11 @@ export class ConfigurationClient {
  * A lightweight structural check — not full schema validation — sufficient
  * to reject a garbled or unexpectedly-shaped response before it ever
  * replaces a good cache, per this file's own "validated ... before being
- * accepted" contract.
+ * accepted" contract. Validates every element within variations/rules,
+ * not only that the containers are arrays (task 5.1): a malformed
+ * element (e.g. a null entry, or a Variation with no `key`) previously
+ * passed this check and could crash `evaluateFlag` later, at evaluation
+ * time, rather than being rejected here at fetch time.
  */
 function isValidConfiguration(value: unknown): value is Configuration {
   if (typeof value !== "object" || value === null) {
@@ -393,6 +397,78 @@ function isValidFlagConfig(value: unknown): boolean {
     typeof candidate.enabled === "boolean" &&
     typeof candidate.default_variation === "string" &&
     Array.isArray(candidate.variations) &&
-    Array.isArray(candidate.rules)
+    candidate.variations.every(isValidVariation) &&
+    Array.isArray(candidate.rules) &&
+    candidate.rules.every(isValidRule)
   );
+}
+
+function isValidVariation(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  return typeof (value as Record<string, unknown>).key === "string";
+}
+
+function isValidRule(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+
+  if (candidate.conditions !== undefined) {
+    if (!Array.isArray(candidate.conditions) || !candidate.conditions.every(isValidCondition)) {
+      return false;
+    }
+  }
+
+  return isValidOutcome(candidate.outcome);
+}
+
+function isValidCondition(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+
+  return typeof candidate.attribute === "string" && typeof candidate.value === "string";
+}
+
+/**
+ * Mirrors evaluation-core's own resolveOutcome logic exactly: a rollout
+ * with at least one split is used in preference to variation_key (so
+ * variation_key is not required when a non-empty rollout is present),
+ * and each split must itself be well-formed.
+ */
+function isValidOutcome(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+
+  if (candidate.rollout !== undefined) {
+    if (!Array.isArray(candidate.rollout)) {
+      return false;
+    }
+
+    if (candidate.rollout.length > 0) {
+      return candidate.rollout.every(isValidRolloutSplit);
+    }
+  }
+
+  return typeof candidate.variation_key === "string";
+}
+
+function isValidRolloutSplit(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+
+  return typeof candidate.variation_key === "string" && typeof candidate.percentage === "number";
 }

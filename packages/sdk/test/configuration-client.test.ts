@@ -125,6 +125,53 @@ describe("ConfigurationClient", () => {
     client.stop();
   });
 
+  it("a config whose containers are well-formed but whose elements are not is rejected without replacing the cache (task 5.1, 5.2)", async () => {
+    // The containers (flags/variations/rules arrays) are all present and
+    // correctly typed here — only a single element deep inside is
+    // malformed (a Variation with no `key`). A validation check that only
+    // asked "is this an array" would have accepted this and cached it,
+    // and evaluateFlag could then crash on it later, at evaluation time,
+    // rather than this being rejected here at fetch time.
+    // Manually verified: replacing the `candidate.variations.every(isValidVariation)`
+    // check with a bare `Array.isArray(candidate.variations)` check made this
+    // test fail (onConfigRefreshError never called); restored before committing.
+    const configWithMalformedElement = {
+      ...validConfig,
+      version: 4,
+      flags: [
+        {
+          ...validConfig.flags[0],
+          variations: [{ value: true }, { key: "off", value: false }],
+        },
+      ],
+    };
+
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(validConfig))
+      .mockResolvedValueOnce(jsonResponse(configWithMalformedElement));
+
+    const onConfigRefreshError = vi.fn();
+
+    const client = new ConfigurationClient({
+      baseUrl: "http://api.test",
+      credential: "cred",
+      refreshIntervalMs: 10,
+      fetchImpl,
+      onConfigRefreshError,
+    });
+
+    await client.start();
+    expect(client.getConfig()).toEqual(validConfig);
+
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(onConfigRefreshError).toHaveBeenCalledTimes(1);
+    expect(client.getConfig()).toEqual(validConfig);
+
+    client.stop();
+  });
+
   it("an HTTP error response is rejected without replacing the cache", async () => {
     const fetchImpl = vi
       .fn()
