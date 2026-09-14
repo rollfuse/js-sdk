@@ -170,6 +170,7 @@
       "subject_type",
       "subject_id",
       "payload",
+      "predates_actor_capture",
       "created_at"
     ],
     "properties": {
@@ -199,7 +200,11 @@
             "$ref": "#/components/schemas/AuditEventActor"
           }
         ],
-        "description": "Who or what triggered the recorded mutation. Omitted entirely for an event recorded before actor attribution existed, or by a module that has not adopted it — an absent actor is never defaulted to a specific value."
+        "description": "Who or what triggered the recorded mutation. Omitted for an event recorded by a module that has not adopted attribution yet (predates_actor_capture is false in that case) or for an event that predates actor attribution entirely (predates_actor_capture is true) — an absent actor is never defaulted to a specific value."
+      },
+      "predates_actor_capture": {
+        "type": "boolean",
+        "description": "True only for an event recorded before this platform captured actors at all. Distinguishes that historical gap from an event recorded afterward whose actor is absent because the recording module has not adopted attribution yet — the latter is a defect to fix, the former is not."
       },
       "created_at": {
         "type": "string",
@@ -719,6 +724,55 @@
       "captured_at": {
         "type": "string",
         "format": "date-time"
+      },
+      "disposition": {
+        "description": "Staff's recorded outcome of working this Lead. `new` until a staff member with `leads:work` records one.",
+        "type": "string",
+        "enum": [
+          "new",
+          "contacted",
+          "qualified",
+          "disqualified"
+        ]
+      }
+    }
+  },
+  "ListLeadsForStaffResponse": {
+    "type": "object",
+    "required": [
+      "leads",
+      "limit",
+      "offset"
+    ],
+    "properties": {
+      "leads": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Lead"
+        }
+      },
+      "limit": {
+        "type": "integer"
+      },
+      "offset": {
+        "type": "integer"
+      }
+    }
+  },
+  "RecordLeadDispositionRequest": {
+    "type": "object",
+    "required": [
+      "disposition"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "disposition": {
+        "type": "string",
+        "enum": [
+          "contacted",
+          "qualified",
+          "disqualified"
+        ]
       }
     }
   },
@@ -3524,7 +3578,8 @@
             "support:respond",
             "support:close",
             "privacy:erase",
-            "residency:review"
+            "residency:review",
+            "leads:work"
           ]
         }
       }
