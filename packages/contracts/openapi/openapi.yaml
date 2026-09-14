@@ -538,6 +538,165 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/staff/leads:
+    get:
+      operationId: listStaffLeads
+      summary: List captured leads across every Organization
+      description: >-
+        Requires a StaffSession holding `leads:work`. Leads are pre-tenant
+        (captured before any Organization, Project or Member exists for the
+        prospect), so there is no Organization to scope this by — every
+        read is audited against a fixed platform-internal Organization
+        instead, per lead-routing's "Reading a lead is audited" scenario.
+      tags: [leads, platform-staff]
+      security:
+        - staffSessionAuth: []
+      parameters:
+        - name: disposition
+          in: query
+          required: false
+          description: Filter to leads currently holding this disposition.
+          schema:
+            type: string
+            enum: [new, contacted, qualified, disqualified]
+        - name: limit
+          in: query
+          required: false
+          description: >-
+            Page size. Defaults to 50 when absent, zero, or above the
+            maximum of 200.
+          schema:
+            type: integer
+            minimum: 0
+        - name: offset
+          in: query
+          required: false
+          description: Rows to skip in the newest-captured-first ordering. Defaults to 0.
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: Leads across every Organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListLeadsForStaffResponse"
+        "401":
+          description: >-
+            No StaffSession was presented, or the presented one is invalid,
+            expired, revoked, or belongs to a disabled StaffMember.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The StaffMember does not hold `leads:work`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/staff/leads/{lead_id}:
+    get:
+      operationId: getStaffLead
+      summary: Get one captured lead
+      description: Requires a StaffSession holding `leads:work`.
+      tags: [leads, platform-staff]
+      security:
+        - staffSessionAuth: []
+      parameters:
+        - name: lead_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The lead.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "401":
+          description: >-
+            No StaffSession was presented, or the presented one is invalid,
+            expired, revoked, or belongs to a disabled StaffMember.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The StaffMember does not hold `leads:work`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/staff/leads/{lead_id}/disposition:
+    post:
+      operationId: recordStaffLeadDisposition
+      summary: Record a lead's disposition
+      description: >-
+        Requires a StaffSession holding `leads:work`. Persists the
+        disposition and, implicitly through the StaffSession, the acting
+        staff member — per lead-routing's "Staff Records A Disposition"
+        scenario.
+      tags: [leads, platform-staff]
+      security:
+        - staffSessionAuth: []
+      parameters:
+        - name: lead_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordLeadDispositionRequest"
+      responses:
+        "200":
+          description: The lead, with its new disposition.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "400":
+          description: Validation error or malformed JSON body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: >-
+            No StaffSession was presented, or the presented one is invalid,
+            expired, revoked, or belongs to a disabled StaffMember.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The StaffMember does not hold `leads:work`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{organization_id}/projects:
     post:
       operationId: createProject
@@ -10174,12 +10333,13 @@ paths:
       description: >-
         Requires a session for a Member holding audit:read. Returns the
         recorded AuditEvents of the caller's own Organization, newest first,
-        filtered by any combination of event_type, subject_type, subject_id
-        and an inclusive occurred-at window (occurred_after/occurred_before,
-        RFC3339). The Organization is always taken from the session — any
-        organization_id supplied by the caller is ignored. Results are
-        paginated with limit/offset; the response echoes the pagination
-        actually applied (the default limit kicks in when none is supplied).
+        filtered by any combination of event_type, subject_type, subject_id,
+        actor_type, actor_id and an inclusive occurred-at window
+        (occurred_after/occurred_before, RFC3339). The Organization is always
+        taken from the session — any organization_id supplied by the caller
+        is ignored. Results are paginated with limit/offset; the response
+        echoes the pagination actually applied (the default limit kicks in
+        when none is supplied).
       tags: [audit]
       security:
         - sessionAuth: []
@@ -10197,6 +10357,19 @@ paths:
         - name: subject_id
           in: query
           required: false
+          schema:
+            type: string
+        - name: actor_type
+          in: query
+          required: false
+          description: Matches AuditEventActor.type exactly (member, staff, system or gateway).
+          schema:
+            type: string
+            enum: [member, staff, system, gateway]
+        - name: actor_id
+          in: query
+          required: false
+          description: Matches the acting Member's or StaffMember's id exactly.
           schema:
             type: string
         - name: occurred_after
@@ -10242,6 +10415,7 @@ paths:
                     actor:
                       type: member
                       id: 018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f
+                    predates_actor_capture: false
                     created_at: "2026-01-01T12:00:00Z"
                 limit: 100
                 offset: 0
@@ -10291,12 +10465,12 @@ paths:
         Requires a session for a Member holding audit:read. Returns the same
         Organization-scoped, filtered set of AuditEvents as GET
         /v1/audit-events — honoring the same event_type, subject_type,
-        subject_id and occurred-at filters — but as a single downloadable
-        document without the listing's pagination limit. The format query
-        parameter selects csv (the default) or json. In CSV, the payload
-        column holds the event's JSON document as a quoted field, which
-        consumers must parse as JSON, and the actor_type/actor_id columns
-        are both empty for an event recorded without an actor.
+        subject_id, actor_type, actor_id and occurred-at filters — but as a
+        single downloadable document without the listing's pagination limit.
+        The format query parameter selects csv (the default) or json. In
+        CSV, the payload column holds the event's JSON document as a quoted
+        field, which consumers must parse as JSON, and the actor_type/actor_id
+        columns are both empty for an event recorded without an actor.
       tags: [audit]
       security:
         - sessionAuth: []
@@ -10323,6 +10497,17 @@ paths:
           required: false
           schema:
             type: string
+        - name: actor_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [member, staff, system, gateway]
+        - name: actor_id
+          in: query
+          required: false
+          schema:
+            type: string
         - name: occurred_after
           in: query
           required: false
@@ -10343,8 +10528,8 @@ paths:
               schema:
                 type: string
               example: |
-                id,organization_id,event_type,subject_type,subject_id,actor_type,actor_id,created_at,payload
-                018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f,018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f,role.granted,member,018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f,member,018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f,2026-01-01T12:00:00Z,"{""role"":""admin""}"
+                id,organization_id,event_type,subject_type,subject_id,actor_type,actor_id,predates_actor_capture,created_at,payload
+                018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f,018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f,role.granted,member,018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f,member,018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f,false,2026-01-01T12:00:00Z,"{""role"":""admin""}"
             application/json:
               schema:
                 type: array
@@ -13645,6 +13830,7 @@ components:
         - subject_type
         - subject_id
         - payload
+        - predates_actor_capture
         - created_at
       properties:
         id:
@@ -13667,10 +13853,20 @@ components:
           allOf:
             - $ref: "#/components/schemas/AuditEventActor"
           description: >-
-            Who or what triggered the recorded mutation. Omitted entirely
-            for an event recorded before actor attribution existed, or by a
-            module that has not adopted it — an absent actor is never
-            defaulted to a specific value.
+            Who or what triggered the recorded mutation. Omitted for an
+            event recorded by a module that has not adopted attribution yet
+            (predates_actor_capture is false in that case) or for an event
+            that predates actor attribution entirely (predates_actor_capture
+            is true) — an absent actor is never defaulted to a specific
+            value.
+        predates_actor_capture:
+          type: boolean
+          description: >-
+            True only for an event recorded before this platform captured
+            actors at all. Distinguishes that historical gap from an event
+            recorded afterward whose actor is absent because the recording
+            module has not adopted attribution yet — the latter is a defect
+            to fix, the former is not.
         created_at:
           type: string
           format: date-time
@@ -14041,6 +14237,34 @@ components:
         captured_at:
           type: string
           format: date-time
+        disposition:
+          description: >-
+            Staff's recorded outcome of working this Lead. `new` until a
+            staff member with `leads:work` records one.
+          type: string
+          enum: [new, contacted, qualified, disqualified]
+
+    ListLeadsForStaffResponse:
+      type: object
+      required: [leads, limit, offset]
+      properties:
+        leads:
+          type: array
+          items:
+            $ref: "#/components/schemas/Lead"
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    RecordLeadDispositionRequest:
+      type: object
+      required: [disposition]
+      additionalProperties: false
+      properties:
+        disposition:
+          type: string
+          enum: [contacted, qualified, disqualified]
 
     CreateOrganizationRequest:
       type: object
@@ -16150,7 +16374,7 @@ components:
             out-of-band operations with no API surface.
           items:
             type: string
-            enum: ["billing:refund", "support:view", "support:respond", "support:close", "privacy:erase", "residency:review"]
+            enum: ["billing:refund", "support:view", "support:respond", "support:close", "privacy:erase", "residency:review", "leads:work"]
 
     ConfirmStaffMagicLinkResponse:
       type: object
@@ -18338,7 +18562,7 @@ tags:
       identity from a Member, with its own session, its own cookie
       (`rf_staff_session`) and its own small permission catalog
       (`billing:refund`, `support:view`, `support:respond`,
-      `support:close`, `privacy:erase`, `residency:review`).
+      `support:close`, `privacy:erase`, `residency:review`, `leads:work`).
   - name: personal-data-lifecycle
     description: >-
       Erasure of a person's personal data: the in-product request an

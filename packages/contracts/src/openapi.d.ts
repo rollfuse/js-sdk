@@ -224,6 +224,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/staff/leads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List captured leads across every Organization
+         * @description Requires a StaffSession holding `leads:work`. Leads are pre-tenant (captured before any Organization, Project or Member exists for the prospect), so there is no Organization to scope this by — every read is audited against a fixed platform-internal Organization instead, per lead-routing's "Reading a lead is audited" scenario.
+         */
+        get: operations["listStaffLeads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/leads/{lead_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one captured lead
+         * @description Requires a StaffSession holding `leads:work`.
+         */
+        get: operations["getStaffLead"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/leads/{lead_id}/disposition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a lead's disposition
+         * @description Requires a StaffSession holding `leads:work`. Persists the disposition and, implicitly through the StaffSession, the acting staff member — per lead-routing's "Staff Records A Disposition" scenario.
+         */
+        post: operations["recordStaffLeadDisposition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{organization_id}/projects": {
         parameters: {
             query?: never;
@@ -2491,7 +2551,7 @@ export interface paths {
         };
         /**
          * List the Organization's audit trail
-         * @description Requires a session for a Member holding audit:read. Returns the recorded AuditEvents of the caller's own Organization, newest first, filtered by any combination of event_type, subject_type, subject_id and an inclusive occurred-at window (occurred_after/occurred_before, RFC3339). The Organization is always taken from the session — any organization_id supplied by the caller is ignored. Results are paginated with limit/offset; the response echoes the pagination actually applied (the default limit kicks in when none is supplied).
+         * @description Requires a session for a Member holding audit:read. Returns the recorded AuditEvents of the caller's own Organization, newest first, filtered by any combination of event_type, subject_type, subject_id, actor_type, actor_id and an inclusive occurred-at window (occurred_after/occurred_before, RFC3339). The Organization is always taken from the session — any organization_id supplied by the caller is ignored. Results are paginated with limit/offset; the response echoes the pagination actually applied (the default limit kicks in when none is supplied).
          */
         get: operations["listAuditEvents"];
         put?: never;
@@ -2511,7 +2571,7 @@ export interface paths {
         };
         /**
          * Export the Organization's audit trail
-         * @description Requires a session for a Member holding audit:read. Returns the same Organization-scoped, filtered set of AuditEvents as GET /v1/audit-events — honoring the same event_type, subject_type, subject_id and occurred-at filters — but as a single downloadable document without the listing's pagination limit. The format query parameter selects csv (the default) or json. In CSV, the payload column holds the event's JSON document as a quoted field, which consumers must parse as JSON, and the actor_type/actor_id columns are both empty for an event recorded without an actor.
+         * @description Requires a session for a Member holding audit:read. Returns the same Organization-scoped, filtered set of AuditEvents as GET /v1/audit-events — honoring the same event_type, subject_type, subject_id, actor_type, actor_id and occurred-at filters — but as a single downloadable document without the listing's pagination limit. The format query parameter selects csv (the default) or json. In CSV, the payload column holds the event's JSON document as a quoted field, which consumers must parse as JSON, and the actor_type/actor_id columns are both empty for an event recorded without an actor.
          */
         get: operations["exportAuditEvents"];
         put?: never;
@@ -3533,8 +3593,10 @@ export interface components {
             payload: {
                 [key: string]: unknown;
             };
-            /** @description Who or what triggered the recorded mutation. Omitted entirely for an event recorded before actor attribution existed, or by a module that has not adopted it — an absent actor is never defaulted to a specific value. */
+            /** @description Who or what triggered the recorded mutation. Omitted for an event recorded by a module that has not adopted attribution yet (predates_actor_capture is false in that case) or for an event that predates actor attribution entirely (predates_actor_capture is true) — an absent actor is never defaulted to a specific value. */
             actor?: components["schemas"]["AuditEventActor"];
+            /** @description True only for an event recorded before this platform captured actors at all. Distinguishes that historical gap from an event recorded afterward whose actor is absent because the recording module has not adopted attribution yet — the latter is a defect to fix, the former is not. */
+            predates_actor_capture: boolean;
             /** Format: date-time */
             created_at: string;
         };
@@ -3693,6 +3755,20 @@ export interface components {
             locale: "en" | "pt-br";
             /** Format: date-time */
             captured_at: string;
+            /**
+             * @description Staff's recorded outcome of working this Lead. `new` until a staff member with `leads:work` records one.
+             * @enum {string}
+             */
+            disposition?: "new" | "contacted" | "qualified" | "disqualified";
+        };
+        ListLeadsForStaffResponse: {
+            leads: components["schemas"]["Lead"][];
+            limit: number;
+            offset: number;
+        };
+        RecordLeadDispositionRequest: {
+            /** @enum {string} */
+            disposition: "contacted" | "qualified" | "disqualified";
         };
         CreateOrganizationRequest: {
             name: string;
@@ -4548,7 +4624,7 @@ export interface components {
             /** @enum {string} */
             status: "active" | "disabled";
             /** @description The staff permissions this StaffMember was granted, drawn from a small fixed catalog. Read-only here: granting and revoking are out-of-band operations with no API surface. */
-            permissions: ("billing:refund" | "support:view" | "support:respond" | "support:close" | "privacy:erase" | "residency:review")[];
+            permissions: ("billing:refund" | "support:view" | "support:respond" | "support:close" | "privacy:erase" | "residency:review" | "leads:work")[];
         };
         /** @description The only place the plaintext StaffSession token is ever returned; only its one-way hash is persisted. */
         ConfirmStaffMagicLinkResponse: {
@@ -6070,6 +6146,162 @@ export interface operations {
             };
             /** @description Rate limit exceeded for the originating IP address. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listStaffLeads: {
+        parameters: {
+            query?: {
+                /** @description Filter to leads currently holding this disposition. */
+                disposition?: "new" | "contacted" | "qualified" | "disqualified";
+                /** @description Page size. Defaults to 50 when absent, zero, or above the maximum of 200. */
+                limit?: number;
+                /** @description Rows to skip in the newest-captured-first ordering. Defaults to 0. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Leads across every Organization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListLeadsForStaffResponse"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `leads:work`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getStaffLead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lead_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lead. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Lead"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `leads:work`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    recordStaffLeadDisposition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lead_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordLeadDispositionRequest"];
+            };
+        };
+        responses: {
+            /** @description The lead, with its new disposition. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Lead"];
+                };
+            };
+            /** @description Validation error or malformed JSON body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No StaffSession was presented, or the presented one is invalid, expired, revoked, or belongs to a disabled StaffMember. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The StaffMember does not hold `leads:work`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -16237,6 +16469,10 @@ export interface operations {
                 event_type?: string;
                 subject_type?: string;
                 subject_id?: string;
+                /** @description Matches AuditEventActor.type exactly (member, staff, system or gateway). */
+                actor_type?: "member" | "staff" | "system" | "gateway";
+                /** @description Matches the acting Member's or StaffMember's id exactly. */
+                actor_id?: string;
                 occurred_after?: string;
                 occurred_before?: string;
                 limit?: number;
@@ -16270,6 +16506,7 @@ export interface operations {
                      *             "type": "member",
                      *             "id": "018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f"
                      *           },
+                     *           "predates_actor_capture": false,
                      *           "created_at": "2026-01-01T12:00:00Z"
                      *         }
                      *       ],
@@ -16344,6 +16581,8 @@ export interface operations {
                 event_type?: string;
                 subject_type?: string;
                 subject_id?: string;
+                actor_type?: "member" | "staff" | "system" | "gateway";
+                actor_id?: string;
                 occurred_after?: string;
                 occurred_before?: string;
             };
@@ -16360,8 +16599,8 @@ export interface operations {
                 };
                 content: {
                     /**
-                     * @example id,organization_id,event_type,subject_type,subject_id,actor_type,actor_id,created_at,payload
-                     *     018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f,018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f,role.granted,member,018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f,member,018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f,2026-01-01T12:00:00Z,"{""role"":""admin""}"
+                     * @example id,organization_id,event_type,subject_type,subject_id,actor_type,actor_id,predates_actor_capture,created_at,payload
+                     *     018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f,018f2f3a-6000-7000-9c3a-1f2b3c4d5e6f,role.granted,member,018f2f3a-d000-7000-9c3a-1f2b3c4d5e6f,member,018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f,false,2026-01-01T12:00:00Z,"{""role"":""admin""}"
                      */
                     "text/csv": string;
                     "application/json": components["schemas"]["AuditEvent"][];
