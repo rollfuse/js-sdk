@@ -4,6 +4,9 @@ import { ConfigurationClient } from "./configuration-client.js";
 import { ConfigNotReadyError, CredentialRequiredError, FlagNotFoundError } from "./errors.js";
 import { ExposureQueue } from "./exposure-queue.js";
 
+/** Default bound on close() — see RollfuseClientOptions.closeTimeoutMs's own doc comment. */
+const DEFAULT_CLOSE_TIMEOUT_MS = 5_000;
+
 export interface RollfuseClientOptions {
   /** The platform API's base URL, e.g. "https://api.rollfuse.com". */
   baseUrl: string;
@@ -48,6 +51,13 @@ export interface RollfuseClientOptions {
    * Default 10s.
    */
   requestTimeoutMs?: number;
+  /**
+   * Bounds `close()`: it returns once every pending exposure has flushed
+   * and both sub-clients' connection pools have released, or once this
+   * many milliseconds elapse, whichever comes first, per
+   * sdk-conformance's "A server process shuts down" scenario. Default 5s.
+   */
+  closeTimeoutMs?: number;
   /** Called after each successful Configuration refresh, with the new version. */
   onConfigRefreshed?: (version: number) => void;
   /** Called after each failed or invalid Configuration refresh attempt. */
@@ -83,11 +93,14 @@ export interface EvaluateAllOptions {
 export class RollfuseClient {
   private readonly configurationClient: ConfigurationClient;
   private readonly exposureQueue: ExposureQueue;
+  private readonly closeTimeoutMs: number;
 
   constructor(options: RollfuseClientOptions) {
     if (!options.credential) {
       throw new CredentialRequiredError();
     }
+
+    this.closeTimeoutMs = options.closeTimeoutMs ?? DEFAULT_CLOSE_TIMEOUT_MS;
 
     this.configurationClient = new ConfigurationClient({
       baseUrl: options.baseUrl,
@@ -143,11 +156,16 @@ export class RollfuseClient {
    * Stops background work, submits any remaining queued exposures, and
    * releases both sub-clients' undici connection pools (a no-op for
    * either if a caller-supplied `fetchImpl` is in use — see
-   * `ConfigurationClient.close()`/`ExposureQueue.close()`).
+   * `ConfigurationClient.close()`/`ExposureQueue.close()`), bounded by
+   * `closeTimeoutMs` (task 8.2): returns once flushed and released, or
+   * once the bound elapses, whichever comes first.
    */
   async close(): Promise<void> {
     this.configurationClient.stop();
-    await Promise.all([this.configurationClient.close(), this.exposureQueue.close()]);
+    await Promise.race([
+      Promise.all([this.configurationClient.close(), this.exposureQueue.close()]),
+      sleep(this.closeTimeoutMs),
+    ]);
   }
 
   /**
@@ -227,6 +245,14 @@ export class RollfuseClient {
       configVersion: result.config_version,
     });
   }
+}
+
+/** Resolves after ms — close()'s bound, raced against the underlying flush/release work (task 8.2). */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    timer.unref?.();
+  });
 }
 
 /**

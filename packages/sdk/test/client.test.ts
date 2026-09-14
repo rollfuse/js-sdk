@@ -319,4 +319,107 @@ describe("RollfuseClient", () => {
       expect(onExposureDropped).toHaveBeenCalledWith(1);
     });
   });
+
+  describe("A Client Flushes Before It Stops", () => {
+    it("close() returns once flushed and released, well before closeTimeoutMs, on the happy path (task 8.2)", async () => {
+      vi.useRealTimers();
+
+      try {
+        const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+        const client = new RollfuseClient({
+          baseUrl: "http://api.test",
+          credential: "cred",
+          closeTimeoutMs: 5_000,
+          fetchImpl,
+        });
+
+        await client.start();
+        client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } });
+
+        const startedAt = Date.now();
+        await client.close();
+        const elapsed = Date.now() - startedAt;
+
+        expect(elapsed).toBeLessThan(1_000);
+
+        const exposureCall = fetchImpl.mock.calls.find(([url]) => (url as string).endsWith("/v1/exposure-events"));
+        expect(exposureCall).toBeDefined();
+      } finally {
+        vi.useFakeTimers();
+      }
+    });
+
+    it("close() returns once closeTimeoutMs elapses if the flush hangs, rather than awaiting it indefinitely (task 8.2). Manually verified: removing the Promise.race bound made this test itself hang past its own timeout; restored before committing.", async () => {
+      vi.useRealTimers();
+
+      try {
+        const fetchImpl: typeof fetch = vi.fn((url) => {
+          if (url.toString().endsWith("/v1/exposure-events")) {
+            return new Promise<Response>(() => {
+              // never resolves
+            });
+          }
+
+          return Promise.resolve(jsonResponse(validConfig));
+        });
+
+        const client = new RollfuseClient({
+          baseUrl: "http://api.test",
+          credential: "cred",
+          closeTimeoutMs: 100,
+          fetchImpl,
+        });
+
+        await client.start();
+        client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } });
+
+        const startedAt = Date.now();
+        await client.close();
+        const elapsed = Date.now() - startedAt;
+
+        expect(elapsed).toBeGreaterThanOrEqual(90);
+        expect(elapsed).toBeLessThan(1_000);
+      } finally {
+        vi.useFakeTimers();
+      }
+    });
+
+    it("a stopped client resumes polling and reporting once started again, rather than remaining inert (task 8.3)", async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(validConfig))
+        .mockResolvedValueOnce(
+          jsonResponse({ ...validConfig, version: 4, flags: [{ ...validConfig.flags[0], rules: [] }] }),
+        );
+
+      const client = new RollfuseClient({
+        baseUrl: "http://api.test",
+        credential: "cred",
+        refreshIntervalMs: 1_000,
+        fetchImpl,
+      });
+
+      await client.start();
+      expect(
+        client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } }).variation_key,
+      ).toBe("on");
+
+      client.stop();
+
+      // While stopped, no further refresh happens even once the interval elapses.
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+      // Restarted: resumes with an immediate poll attempt rather than
+      // waiting out a full interval it has no active timer for anymore.
+      await client.start();
+      await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+
+      expect(
+        client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } }).variation_key,
+      ).toBe("off");
+
+      client.stop();
+    });
+  });
 });

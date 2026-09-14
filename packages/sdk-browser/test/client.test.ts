@@ -387,4 +387,202 @@ describe("RollfusePublicClient", () => {
       client.stop();
     });
   });
+
+  describe("A Client Flushes Before It Stops", () => {
+    it("flushes pending exposures with a keepalive transport when the page becomes hidden (task 8.1)", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const client = new RollfusePublicClient({
+        baseUrl: "http://api.test",
+        publicCredential: "pub_cred",
+        exposureBatchSize: 1_000_000, // never auto-flush during this test
+        fetchImpl,
+      });
+
+      await client.start();
+      client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } });
+
+      fetchImpl.mockClear();
+
+      Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+
+      await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+
+      const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe("http://api.test/v1/exposure-events");
+      expect(init.keepalive).toBe(true);
+
+      client.stop();
+    });
+
+    it("flushes pending exposures with a keepalive transport on pagehide (task 8.1)", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const client = new RollfusePublicClient({
+        baseUrl: "http://api.test",
+        publicCredential: "pub_cred",
+        exposureBatchSize: 1_000_000,
+        fetchImpl,
+      });
+
+      await client.start();
+      client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } });
+
+      fetchImpl.mockClear();
+
+      window.dispatchEvent(new Event("pagehide"));
+
+      await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+
+      const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+      expect(init.keepalive).toBe(true);
+
+      client.stop();
+    });
+
+    it("does not flush on visibilitychange when the page becomes visible again, only when hidden", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const client = new RollfusePublicClient({
+        baseUrl: "http://api.test",
+        publicCredential: "pub_cred",
+        exposureBatchSize: 1_000_000,
+        fetchImpl,
+      });
+
+      await client.start();
+      client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } });
+
+      fetchImpl.mockClear();
+
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+
+      expect(fetchImpl).not.toHaveBeenCalled();
+
+      client.stop();
+    });
+
+    it("close() returns once flushed, well before closeTimeoutMs, on the happy path (task 8.2)", async () => {
+      vi.useRealTimers();
+
+      try {
+        const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+        const client = new RollfusePublicClient({
+          baseUrl: "http://api.test",
+          publicCredential: "pub_cred",
+          closeTimeoutMs: 5_000,
+          fetchImpl,
+        });
+
+        await client.start();
+        client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } });
+
+        const startedAt = Date.now();
+        await client.close();
+        const elapsed = Date.now() - startedAt;
+
+        expect(elapsed).toBeLessThan(1_000);
+
+        const exposureCall = fetchImpl.mock.calls.find(([url]) => (url as string).endsWith("/v1/exposure-events"));
+        expect(exposureCall).toBeDefined();
+      } finally {
+        vi.useFakeTimers();
+      }
+    });
+
+    it("close() returns once closeTimeoutMs elapses if the flush hangs, rather than awaiting it indefinitely (task 8.2). Manually verified: removing the Promise.race bound made this test itself hang past its own timeout; restored before committing.", async () => {
+      vi.useRealTimers();
+
+      try {
+        const fetchImpl: typeof fetch = vi.fn((url) => {
+          if ((url as string).toString().endsWith("/v1/exposure-events")) {
+            return new Promise<Response>(() => {
+              // never resolves
+            });
+          }
+
+          return Promise.resolve(jsonResponse(validConfig));
+        });
+
+        const client = new RollfusePublicClient({
+          baseUrl: "http://api.test",
+          publicCredential: "pub_cred",
+          closeTimeoutMs: 100,
+          fetchImpl,
+        });
+
+        await client.start();
+        client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } });
+
+        const startedAt = Date.now();
+        await client.close();
+        const elapsed = Date.now() - startedAt;
+
+        expect(elapsed).toBeGreaterThanOrEqual(90);
+        expect(elapsed).toBeLessThan(1_000);
+      } finally {
+        vi.useFakeTimers();
+      }
+    });
+
+    it("a stopped client resumes polling and reporting once started again, rather than remaining inert (task 8.3)", async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(validConfig))
+        .mockResolvedValueOnce(
+          jsonResponse({ ...validConfig, version: 4, flags: [{ ...validConfig.flags[0], rules: [] }] }),
+        );
+
+      const client = new RollfusePublicClient({
+        baseUrl: "http://api.test",
+        publicCredential: "pub_cred",
+        refreshIntervalMs: 1_000,
+        fetchImpl,
+      });
+
+      await client.start();
+      expect(client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } }).variation_key).toBe(
+        "on",
+      );
+
+      client.stop();
+
+      // While stopped, no further refresh happens even once the interval elapses.
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+      // Restarted: resumes with an immediate poll attempt rather than
+      // waiting out a full interval it has no active timer for anymore
+      // (start() after stop() kicks the loop directly — see
+      // ConfigurationClient.start's own doc comment) — proven here before
+      // ever advancing the clock again, so this assertion isn't sensitive
+      // to whether that immediate attempt's own next-scheduled poll also
+      // lands within a subsequent advance.
+      await client.start();
+      await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+      expect(client.evaluate("user_1", "checkout-redesign", { attributes: { plan: "enterprise" } }).variation_key).toBe(
+        "off",
+      );
+
+      client.stop();
+    });
+
+    it("close() releases every registered subscriber, so no listener is retained (task 8.4)", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+
+      await client.start();
+
+      client.subscribe(vi.fn());
+      client.subscribe(vi.fn());
+
+      const listenerCount = () =>
+        (client as unknown as { configChangeListeners: Set<unknown> }).configChangeListeners.size;
+
+      expect(listenerCount()).toBe(2);
+
+      await client.close();
+
+      expect(listenerCount()).toBe(0);
+    });
+  });
 });
