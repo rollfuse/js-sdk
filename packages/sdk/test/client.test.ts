@@ -421,5 +421,59 @@ describe("RollfuseClient", () => {
 
       client.stop();
     });
+
+    it("subscribe notifies on each Configuration change, alongside the integrator's own onConfigRefreshed, until unsubscribed (task 10.1)", async () => {
+      const fetchImpl = vi.fn().mockImplementation(() =>
+        Promise.resolve(jsonResponse({ ...validConfig, version: fetchImpl.mock.calls.length + 1 })),
+      );
+
+      const onConfigRefreshed = vi.fn();
+
+      const client = new RollfuseClient({
+        baseUrl: "http://api.test",
+        credential: "cred",
+        refreshIntervalMs: 10,
+        fetchImpl,
+        onConfigRefreshed,
+      });
+
+      const listener = vi.fn();
+      const unsubscribe = client.subscribe(listener);
+
+      await client.start();
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(onConfigRefreshed).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(12); // 10ms base + task 9.2's jitter (up to +20%)
+      expect(listener).toHaveBeenCalledTimes(2);
+      expect(onConfigRefreshed).toHaveBeenCalledTimes(2);
+
+      unsubscribe();
+
+      await vi.advanceTimersByTimeAsync(12);
+      expect(listener).toHaveBeenCalledTimes(2); // no further notifications
+      expect(onConfigRefreshed).toHaveBeenCalledTimes(3); // the integrator's own callback is unaffected
+
+      client.stop();
+    });
+
+    it("close() releases every registered subscriber, so no listener is retained (task 10.1, mirroring task 8.4)", async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+
+      await client.start();
+
+      client.subscribe(vi.fn());
+      client.subscribe(vi.fn());
+
+      const listenerCount = () =>
+        (client as unknown as { configChangeListeners: Set<unknown> }).configChangeListeners.size;
+
+      expect(listenerCount()).toBe(2);
+
+      await client.close();
+
+      expect(listenerCount()).toBe(0);
+    });
   });
 });

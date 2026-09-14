@@ -3,6 +3,7 @@ import {
   ErrorCode,
   OpenFeature,
   ProviderStatus,
+  ServerProviderEvents,
 } from "@openfeature/server-sdk";
 import { RollfuseClient } from "@rollfuse/sdk-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -177,5 +178,77 @@ describe("RollfuseProvider", () => {
     });
 
     expect(details.reason).toBe("DEFAULT");
+  });
+
+  it("reports the dropped attribute through the SDK's logger rather than discarding it silently (task 10.3). Manually verified: removing the logger.warn call made this test fail (0 calls instead of 1); restored before committing.", async () => {
+    const { provider } = await readyProvider(booleanFlag);
+    const client = OpenFeature.getClient();
+
+    const warnings: unknown[][] = [];
+
+    OpenFeature.setLogger({
+      debug: () => undefined,
+      info: () => undefined,
+      warn: (...args: unknown[]) => warnings.push(args),
+      error: () => undefined,
+    });
+
+    await client.getBooleanDetails("checkout-redesign", false, {
+      targetingKey: "user_1",
+      plan: true, // not representable — a boolean, not a string
+    });
+
+    expect(warnings.length).toBeGreaterThanOrEqual(1);
+    expect(String(warnings[0]?.[0])).toContain("plan");
+    expect(provider.metadata.name).toBe("rollfuse"); // sanity: provider itself unaffected
+  });
+
+  it("emits PROVIDER_CONFIGURATION_CHANGED when the wrapped client's Configuration changes (task 10.1). Manually verified: removing the client.subscribe wiring in initialize() made this test's handler never fire, timing out; restored before committing.", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ environment_id: "env_test", version: 1, flags: [booleanFlag] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          environment_id: "env_test",
+          version: 2,
+          flags: [{ ...booleanFlag, rules: [] }],
+        }),
+      );
+
+    const client = new RollfuseClient({
+      baseUrl: "http://api.test",
+      credential: "test-credential",
+      refreshIntervalMs: 10,
+      fetchImpl,
+    });
+    const provider = new RollfuseProvider(client);
+
+    await OpenFeature.setProviderAndWait(provider);
+
+    const changed = new Promise<void>((resolve) => {
+      provider.events.addHandler(ServerProviderEvents.ConfigurationChanged, () => resolve());
+    });
+
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2), { timeout: 2_000, interval: 5 });
+
+    await changed;
+  });
+
+  it("reports ERROR when initialize's underlying fetch never succeeds (task 10.2)", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(new Error("network unreachable"));
+
+    const client = new RollfuseClient({
+      baseUrl: "http://api.test",
+      credential: "test-credential",
+      initTimeoutMs: 50,
+      fetchImpl,
+    });
+    const provider = new RollfuseProvider(client);
+
+    await expect(OpenFeature.setProviderAndWait(provider)).rejects.toThrow();
+
+    expect(OpenFeature.getClient().providerStatus).not.toBe(ProviderStatus.READY);
+
+    client.stop();
   });
 });

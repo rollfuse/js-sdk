@@ -3,6 +3,7 @@ import { evaluateFlag } from "@rollfuse/evaluation-core";
 import { ConfigurationClient } from "./configuration-client.js";
 import { ConfigNotReadyError, CredentialRequiredError, FlagNotFoundError } from "./errors.js";
 import { ExposureQueue } from "./exposure-queue.js";
+import { safeInvoke } from "./safe-invoke.js";
 
 /** Default bound on close() — see RollfuseClientOptions.closeTimeoutMs's own doc comment. */
 const DEFAULT_CLOSE_TIMEOUT_MS = 5_000;
@@ -94,6 +95,7 @@ export class RollfuseClient {
   private readonly configurationClient: ConfigurationClient;
   private readonly exposureQueue: ExposureQueue;
   private readonly closeTimeoutMs: number;
+  private readonly configChangeListeners = new Set<() => void>();
 
   constructor(options: RollfuseClientOptions) {
     if (!options.credential) {
@@ -113,7 +115,10 @@ export class RollfuseClient {
       bodyTimeoutMs: options.bodyTimeoutMs,
       connectTimeoutMs: options.connectTimeoutMs,
       requestTimeoutMs: options.requestTimeoutMs,
-      onConfigRefreshed: options.onConfigRefreshed,
+      onConfigRefreshed: (version) => {
+        options.onConfigRefreshed?.(version);
+        this.notifyConfigChange();
+      },
       onConfigRefreshError: options.onConfigRefreshError,
     });
 
@@ -162,10 +167,35 @@ export class RollfuseClient {
    */
   async close(): Promise<void> {
     this.configurationClient.stop();
+    this.configChangeListeners.clear();
     await Promise.race([
       Promise.all([this.configurationClient.close(), this.exposureQueue.close()]),
       sleep(this.closeTimeoutMs),
     ]);
+  }
+
+  /**
+   * Subscribes to Configuration changes — invoked after each successful
+   * background refresh that produces a new version, so a caller that
+   * didn't construct this client (task 10.1: an OpenFeature provider
+   * wrapping an already-built one, per proposal.md's "the JavaScript
+   * OpenFeature provider") can observe them without needing its own
+   * `onConfigRefreshed` at construction time. Returns an unsubscribe
+   * function. Mirrors `RollfusePublicClient.subscribe`'s identical
+   * signature/rationale in `@rollfuse/sdk-browser`.
+   */
+  subscribe(listener: () => void): () => void {
+    this.configChangeListeners.add(listener);
+
+    return () => {
+      this.configChangeListeners.delete(listener);
+    };
+  }
+
+  private notifyConfigChange(): void {
+    for (const listener of this.configChangeListeners) {
+      safeInvoke(listener);
+    }
   }
 
   /**
