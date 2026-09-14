@@ -181,4 +181,91 @@ describe("evaluateFlag", () => {
       }
     });
   });
+
+  describe("Never throws on an unexpected shape (task 5.3)", () => {
+    // A direct caller of evaluateFlag, bypassing a client's own validated
+    // fetch path entirely — the case this defends independently of
+    // whatever upstream validation exists — could hand it any of these.
+    // Every case must return the flag's default variation rather than
+    // throwing. Manually verified: removing evaluateFlag's try/catch
+    // wrapper made 4 of these 8 cases fail with a real thrown TypeError
+    // (null.conditions, null.attribute, undefined.rollout); restored
+    // before committing.
+    const malformedFlags: Array<[string, FlagConfig]> = [
+      [
+        "a null entry in variations",
+        flag({
+          rules: [{ conditions: [], outcome: { variation_key: "on" } }],
+          // @ts-expect-error deliberately malformed for this test
+          variations: [null, { key: "off", value: false }],
+        }),
+      ],
+      [
+        "a variations entry with no key",
+        flag({
+          rules: [{ conditions: [], outcome: { variation_key: "on" } }],
+          // @ts-expect-error deliberately malformed for this test
+          variations: [{ value: true }, { key: "off", value: false }],
+        }),
+      ],
+      [
+        "rules is not an array",
+        flag({
+          // @ts-expect-error deliberately malformed for this test
+          rules: "not-an-array",
+        }),
+      ],
+      [
+        "a null entry in rules",
+        flag({
+          // @ts-expect-error deliberately malformed for this test
+          rules: [null],
+        }),
+      ],
+      [
+        "a rule with no outcome",
+        flag({
+          // @ts-expect-error deliberately malformed for this test
+          rules: [{ conditions: [] }],
+        }),
+      ],
+      [
+        "a rollout split missing percentage",
+        flag({
+          rules: [
+            {
+              conditions: [],
+              // @ts-expect-error deliberately malformed for this test
+              outcome: { rollout: [{ variation_key: "on" }] },
+            },
+          ],
+        }),
+      ],
+      [
+        "conditions is not an array",
+        flag({
+          // @ts-expect-error deliberately malformed for this test
+          rules: [{ conditions: "not-an-array", outcome: { variation_key: "on" } }],
+        }),
+      ],
+      [
+        "a null entry in conditions",
+        flag({
+          // @ts-expect-error deliberately malformed for this test
+          rules: [{ conditions: [null], outcome: { variation_key: "on" } }],
+        }),
+      ],
+    ];
+
+    for (const [description, malformedFlag] of malformedFlags) {
+      it(`returns the default variation, never throws: ${description}`, () => {
+        expect(() => evaluateFlag(malformedFlag, 1, "user_1")).not.toThrow();
+
+        const result = evaluateFlag(malformedFlag, 1, "user_1");
+
+        expect(result.reason).toMatch(/^default_/);
+        expect(result.variation_key).toBe(malformedFlag.default_variation);
+      });
+    }
+  });
 });

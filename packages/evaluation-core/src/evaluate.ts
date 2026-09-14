@@ -77,12 +77,28 @@ function resolveOutcome(
 
 type Variation = FlagConfig["variations"][number];
 
+/**
+ * Guards against a malformed element slipping past whatever validated the
+ * fetched Configuration (defence in depth per sdk-conformance's
+ * "Evaluation Never Throws And Never Serves Invalid Configuration"
+ * requirement, task 5.3): a caller of this module's exported evaluateFlag
+ * directly, bypassing a client's own config-client validation, is exactly
+ * the case this guards, in addition to any validation gap.
+ */
+function isVariationLike(value: unknown): value is Variation {
+  return typeof value === "object" && value !== null && typeof (value as { key?: unknown }).key === "string";
+}
+
 function hasVariation(flag: FlagConfig, key: string): boolean {
-  return flag.variations.some((v: Variation) => v.key === key);
+  return Array.isArray(flag.variations) && flag.variations.some((v: unknown) => isVariationLike(v) && v.key === key);
 }
 
 function variationValue(flag: FlagConfig, key: string): unknown {
-  return flag.variations.find((v: Variation) => v.key === key)?.value;
+  if (!Array.isArray(flag.variations)) {
+    return undefined;
+  }
+
+  return flag.variations.find((v: unknown) => isVariationLike(v) && v.key === key)?.value;
 }
 
 function defaultResult(
@@ -102,13 +118,31 @@ function defaultResult(
 
 /**
  * Evaluates flag for subjectKey/attributes at configVersion, entirely
- * in-process, against the given FlagConfig.
+ * in-process, against the given FlagConfig. Never throws (task 5.3):
+ * wraps the actual evaluation and falls back to the flag's own default
+ * variation on any unexpected shape, rather than relying solely on
+ * upstream config validation to have caught it — a direct caller of this
+ * exported function, bypassing a client's own validated fetch path
+ * entirely, is exactly the case this guards.
  */
 export function evaluateFlag(
   flag: FlagConfig,
   configVersion: number,
   subjectKey: string,
   attributes: Record<string, string> = {},
+): EvaluationResult {
+  try {
+    return evaluateFlagUnguarded(flag, configVersion, subjectKey, attributes);
+  } catch {
+    return defaultResult(flag, configVersion, "default_fallback");
+  }
+}
+
+function evaluateFlagUnguarded(
+  flag: FlagConfig,
+  configVersion: number,
+  subjectKey: string,
+  attributes: Record<string, string>,
 ): EvaluationResult {
   if (!flag.enabled) {
     return defaultResult(flag, configVersion, "default_disabled");
