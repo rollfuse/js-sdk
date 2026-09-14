@@ -365,6 +365,96 @@ describe("ConfigurationClient", () => {
     client.stop();
   });
 
+  it("a throwing onConfigRefreshError does not stop the background poll loop from continuing on schedule (task 3.1)", async () => {
+    // This package's tests carry no @types/node/`process` (it represents
+    // literal browser-only code — see parity.test.ts's own note), so this
+    // asserts the same property configuration-client.test.ts's Node
+    // counterpart proves directly via `process.on("unhandledRejection")`:
+    // a throwing callback here would otherwise surface as an unhandled
+    // rejection that vitest's own run-level detection fails the whole
+    // suite on regardless (confirmed: this package's `npm test` script
+    // exits non-zero on any unhandled rejection during any test, whether
+    // or not that test's own assertions pass). The behavioral assertion
+    // below — that polling keeps going — is the same proof
+    // configuration-client.ts's own doc comment on `runPollLoop` makes:
+    // background work must survive a throwing callback, not just avoid
+    // literally crashing.
+    const fetchImpl = vi.fn().mockRejectedValue(new Error("network down"));
+
+    const client = new ConfigurationClient({
+      baseUrl: "http://api.test",
+      publicCredential: "pub_cred",
+      refreshIntervalMs: 5_000,
+      fetchImpl,
+      onConfigRefreshError: () => {
+        throw new Error("integrator's error callback itself throws");
+      },
+    });
+
+    const started = client.start();
+
+    started.catch(() => undefined);
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    // Retried at the base backoff (1000ms) despite the callback throwing
+    // on the first attempt.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    client.stop();
+  });
+
+  it("a throwing onConfigRefreshed success callback still resolves start() and records the refresh as successful (task 3.2)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+
+    const client = new ConfigurationClient({
+      baseUrl: "http://api.test",
+      publicCredential: "pub_cred",
+      fetchImpl,
+      onConfigRefreshed: () => {
+        throw new Error("integrator's success callback itself throws");
+      },
+    });
+
+    // Before this fix (calling onConfigRefreshed directly, before
+    // readyResolve()), a throwing callback was caught by this method's
+    // own outer catch and misreported as a refresh failure, leaving
+    // start() unresolved forever even though the fetch had genuinely
+    // succeeded and this.config was already set.
+    await expect(client.start()).resolves.toBeUndefined();
+    expect(client.getConfig()).toEqual(validConfig);
+
+    client.stop();
+  });
+
+  it("the background poll loop survives many consecutive failures without an unhandled rejection (task 3.3)", async () => {
+    // See the task 3.1 test above for why this asserts survival
+    // behaviorally rather than via `process.on`. This exercises
+    // `runPollLoop`'s own terminal `.catch()` across several of the
+    // unawaited, setTimeout-scheduled recursive calls, not only the
+    // very first attempt.
+    const fetchImpl = vi.fn().mockRejectedValue(new Error("network down"));
+
+    const client = new ConfigurationClient({
+      baseUrl: "http://api.test",
+      publicCredential: "pub_cred",
+      refreshIntervalMs: 5_000,
+      fetchImpl,
+    });
+
+    const started = client.start();
+
+    started.catch(() => undefined);
+
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(fetchImpl.mock.calls.length).toBeGreaterThan(3);
+
+    client.stop();
+  });
+
   it("stop() prevents any further polling", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
 

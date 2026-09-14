@@ -368,6 +368,98 @@ describe("ConfigurationClient", () => {
     client.stop();
   });
 
+  it("a throwing onConfigRefreshError does not terminate the process (task 3.1)", async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new Error("network down"));
+    const unhandledRejections: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandledRejections.push(reason);
+
+    process.on("unhandledRejection", onUnhandled);
+
+    try {
+      const client = new ConfigurationClient({
+        baseUrl: "http://api.test",
+        credential: "cred",
+        refreshIntervalMs: 5_000,
+        fetchImpl,
+        onConfigRefreshError: () => {
+          throw new Error("integrator's error callback itself throws");
+        },
+      });
+
+      const started = client.start();
+
+      started.catch(() => undefined);
+
+      // The throwing callback fires on the very first attempt; give any
+      // unhandled rejection a chance to surface before asserting.
+      await vi.advanceTimersByTimeAsync(0);
+      await Promise.resolve();
+
+      expect(unhandledRejections).toEqual([]);
+
+      client.stop();
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  it("a throwing onConfigRefreshed success callback still resolves start() and records the refresh as successful (task 3.2)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
+
+    const client = new ConfigurationClient({
+      baseUrl: "http://api.test",
+      credential: "cred",
+      fetchImpl,
+      onConfigRefreshed: () => {
+        throw new Error("integrator's success callback itself throws");
+      },
+    });
+
+    // Before this fix (calling onConfigRefreshed directly, before
+    // readyResolve()), a throwing callback was caught by this method's
+    // own outer catch and misreported as a refresh failure, leaving
+    // start() unresolved forever even though the fetch had genuinely
+    // succeeded and this.config was already set. Manually verified: with
+    // both the reorder and safeInvoke reverted, this test — and 11 others
+    // in this file — hang until vitest's own 5s test timeout.
+    await expect(client.start()).resolves.toBeUndefined();
+    expect(client.getConfig()).toEqual(validConfig);
+
+    client.stop();
+  });
+
+  it("no unhandled rejection is produced when the background poll loop fails, even with a throwing error callback (task 3.3)", async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new Error("network down"));
+    const unhandledRejections: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandledRejections.push(reason);
+
+    process.on("unhandledRejection", onUnhandled);
+
+    try {
+      const client = new ConfigurationClient({
+        baseUrl: "http://api.test",
+        credential: "cred",
+        refreshIntervalMs: 5_000,
+        fetchImpl,
+      });
+
+      const started = client.start();
+
+      started.catch(() => undefined);
+
+      // Runs the poll loop through several failed retries, exercising
+      // the unawaited setTimeout-scheduled recursive calls, not only the
+      // very first attempt.
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      expect(unhandledRejections).toEqual([]);
+
+      client.stop();
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("stop() prevents any further polling", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
 
