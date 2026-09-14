@@ -234,7 +234,14 @@ export class ConfigurationClient {
       this.initTimer = setTimeout(() => {
         this.readyReject(new InitializationTimeoutError(this.initTimeoutMs));
       }, this.initTimeoutMs);
-      this.initTimer.unref?.();
+      // Deliberately NOT unref'd, unlike this class's other internal
+      // timers (the poll/retry timer): a caller's primary task is almost
+      // always `await client.start()` itself, so this timer is the one
+      // thing standing between an unreachable platform and the whole
+      // process exiting silently (code 0) with start()'s Promise left
+      // forever unsettled — found running go-sdk's sibling fix's test
+      // scenario against a real deployment for harden-sdk-runtime task
+      // 11.2 and confirming the same class of gap existed here too.
       this.runPollLoop();
     } else if (!this.looping && !this.terminallyFailed) {
       // Resuming after stop(): no attempt is currently in flight (if one
