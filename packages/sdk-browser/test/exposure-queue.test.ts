@@ -249,4 +249,48 @@ describe("ExposureQueue", () => {
 
     queue.stop();
   });
+
+  it("a hung flush is abandoned by its deadline and does not block subsequent flushes (task 4.3)", async () => {
+    // See configuration-client.test.ts's identical case for why this
+    // runs under real time. Manually verified: removing the signal from
+    // the flush fetchImpl call made this test itself fail (the first
+    // flush's promise never settled); restored before committing.
+    vi.useRealTimers();
+
+    try {
+      let hungRequestCount = 0;
+      const fetchImpl: typeof fetch = vi.fn((_url, init) => {
+        hungRequestCount++;
+
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = (init as RequestInit).signal;
+
+          signal?.addEventListener("abort", () => reject(signal.reason));
+        });
+      });
+
+      const onExposureSubmitError = vi.fn();
+
+      const queue = new ExposureQueue({
+        baseUrl: "http://api.test",
+        publicCredential: "pub_cred",
+        requestTimeoutMs: 50,
+        fetchImpl,
+        onExposureSubmitError,
+      });
+
+      queue.enqueue(sampleEvent);
+      await queue.flush();
+
+      expect(onExposureSubmitError).toHaveBeenCalledTimes(1);
+      expect(hungRequestCount).toBe(1);
+
+      queue.enqueue({ ...sampleEvent, subjectKey: "user_2" });
+      await queue.flush();
+
+      expect(hungRequestCount).toBe(2);
+    } finally {
+      vi.useFakeTimers();
+    }
+  });
 });

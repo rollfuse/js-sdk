@@ -41,6 +41,13 @@ export interface RollfuseClientOptions {
   headersTimeoutMs?: number;
   bodyTimeoutMs?: number;
   connectTimeoutMs?: number;
+  /**
+   * Deadline applied to every Configuration fetch and exposure flush via
+   * `AbortSignal.timeout`, regardless of which `fetchImpl` is in use —
+   * see `ConfigurationClientOptions.requestTimeoutMs`'s own doc comment.
+   * Default 10s.
+   */
+  requestTimeoutMs?: number;
   /** Called after each successful Configuration refresh, with the new version. */
   onConfigRefreshed?: (version: number) => void;
   /** Called after each failed or invalid Configuration refresh attempt. */
@@ -92,6 +99,7 @@ export class RollfuseClient {
       headersTimeoutMs: options.headersTimeoutMs,
       bodyTimeoutMs: options.bodyTimeoutMs,
       connectTimeoutMs: options.connectTimeoutMs,
+      requestTimeoutMs: options.requestTimeoutMs,
       onConfigRefreshed: options.onConfigRefreshed,
       onConfigRefreshError: options.onConfigRefreshError,
     });
@@ -105,6 +113,7 @@ export class RollfuseClient {
       fetchImpl: options.fetchImpl,
       headersTimeoutMs: options.headersTimeoutMs,
       bodyTimeoutMs: options.bodyTimeoutMs,
+      requestTimeoutMs: options.requestTimeoutMs,
       connectTimeoutMs: options.connectTimeoutMs,
       onExposureDropped: options.onExposureDropped,
       onExposureSubmitError: options.onExposureSubmitError,

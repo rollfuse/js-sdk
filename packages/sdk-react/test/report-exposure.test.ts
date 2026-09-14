@@ -57,4 +57,62 @@ describe("reportExposure", () => {
 
     await expect(reportExposure("/api/rollfuse/exposure", payload, { fetchImpl })).resolves.toBeUndefined();
   });
+
+  it("defaults to a fetch that works when the global fetch is a `this`-sensitive wrapper (e.g. OpenTelemetry's instrumentation) (task 4.4)", async () => {
+    // Matches @rollfuse/sdk-browser's ConfigurationClient/ExposureQueue's
+    // identical fix and its own full rationale: some environments (e.g.
+    // OpenTelemetry's fetch auto-instrumentation) replace `window.fetch`
+    // with a wrapper that only works when invoked with `this ===
+    // window`/globalThis. Before this fix, `options.fetchImpl ?? fetch`
+    // called as a bare identifier broke silently under exactly this
+    // instrumented environment — never surfaced beyond onError, which
+    // callers may not have wired up. Manually verified: reverting to the
+    // bare `options.fetchImpl ?? fetch` made this test fail with the
+    // Illegal-invocation TypeError; reverted back before committing.
+    const thisSensitiveFetch = vi.fn(function (this: unknown) {
+      if (this !== globalThis) {
+        throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+      }
+
+      return Promise.resolve({ ok: true, status: 200 });
+    });
+    vi.stubGlobal("fetch", thisSensitiveFetch);
+
+    const onError = vi.fn();
+
+    try {
+      await reportExposure("/api/rollfuse/exposure", payload, { onError });
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(thisSensitiveFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("applies a deadline via AbortSignal, even to an injected transport (task 4.4)", async () => {
+    vi.useRealTimers();
+
+    try {
+      const hangingFetchImpl: typeof fetch = vi.fn((_url, init) => {
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = (init as RequestInit).signal;
+
+          signal?.addEventListener("abort", () => reject(signal.reason));
+        });
+      });
+
+      const onError = vi.fn();
+
+      await reportExposure("/api/rollfuse/exposure", payload, {
+        fetchImpl: hangingFetchImpl,
+        requestTimeoutMs: 50,
+        onError,
+      });
+
+      expect(onError).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

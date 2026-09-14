@@ -34,6 +34,13 @@ export interface RollfusePublicClientOptions {
    * 15s.
    */
   initTimeoutMs?: number;
+  /**
+   * Deadline applied to every Configuration fetch and exposure flush via
+   * `AbortSignal.timeout`, regardless of which `fetchImpl` is in use —
+   * see `ConfigurationClientOptions.requestTimeoutMs`'s own doc comment.
+   * Default 10s.
+   */
+  requestTimeoutMs?: number;
   /** Maximum number of queued-but-unsubmitted ExposureEvents. Default 1000. */
   exposureQueueCapacity?: number;
   /** Queue length at which a submission batch is triggered early. Default 20. */
@@ -91,6 +98,7 @@ export class RollfusePublicClient {
       refreshIntervalMs: options.refreshIntervalMs,
       maxConfigAgeMs: options.maxConfigAgeMs,
       initTimeoutMs: options.initTimeoutMs,
+      requestTimeoutMs: options.requestTimeoutMs,
       fetchImpl: options.fetchImpl,
       onConfigRefreshed: (version) => {
         options.onConfigRefreshed?.(version);
@@ -106,6 +114,7 @@ export class RollfusePublicClient {
       batchSize: options.exposureBatchSize,
       flushIntervalMs: options.exposureFlushIntervalMs,
       fetchImpl: options.fetchImpl,
+      requestTimeoutMs: options.requestTimeoutMs,
       onExposureDropped: options.onExposureDropped,
       onExposureSubmitError: options.onExposureSubmitError,
     });
