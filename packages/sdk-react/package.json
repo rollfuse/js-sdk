@@ -1,6 +1,6 @@
 {
   "name": "@rollfuse/sdk-react",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -46,7 +46,7 @@
   "dependencies": {
     "@rollfuse/contracts": "^0.8.0",
     "@rollfuse/evaluation-core": "^0.2.2",
-    "@rollfuse/sdk-browser": "^0.1.3"
+    "@rollfuse/sdk-browser": "^0.2.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
