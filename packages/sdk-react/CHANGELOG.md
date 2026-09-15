@@ -1,5 +1,12 @@
 # @rollfuse/sdk-react
 
+## 0.1.8
+
+### Patch Changes
+
+- Updated dependencies [2f0b731]
+  - @rollfuse/sdk-browser@0.4.0
+
 ## 0.1.7
 
 ### Patch Changes
