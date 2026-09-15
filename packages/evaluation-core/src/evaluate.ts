@@ -1,5 +1,19 @@
 import type { EvaluationResult, FlagConfig } from "@rollfuse/contracts";
 import { bucket, BUCKET_MODULUS } from "./bucketing.js";
+import {
+  type AttributeValue,
+  matchClause,
+  readClause,
+  stringAttributesToTyped,
+} from "./clause.js";
+
+export type {
+  AttributeType,
+  AttributeValue,
+  Clause,
+  ClauseOp,
+} from "./clause.js";
+export { boolAttr, isBoundedRegex, listAttr, numberAttr, stringAttr } from "./clause.js";
 
 /**
  * Deterministic, local flag evaluation — reproduced line-for-line from
@@ -75,6 +89,32 @@ function conditionsMatch(
   }
 
   return true;
+}
+
+/**
+ * Reports whether rule matches attributes, preferring its "clauses"
+ * shape (expand-targeting-model task 4.7) when present — read via
+ * readClause since @rollfuse/contracts's generated FlagConfig type does
+ * not yet declare it — and falling back to the pre-existing
+ * conditions-based equality-only matching for a rule published before
+ * this task (never both on the same rule in practice).
+ */
+function ruleMatches(rule: Rule, attributes: Record<string, AttributeValue>): boolean {
+  const clause = readClause(rule);
+
+  if (clause) {
+    return matchClause(clause, attributes).matched;
+  }
+
+  const stringAttributes: Record<string, string> = {};
+
+  for (const [name, value] of Object.entries(attributes)) {
+    if (value.type === "string" && value.string !== undefined) {
+      stringAttributes[name] = value.string;
+    }
+  }
+
+  return conditionsMatch(rule.conditions, stringAttributes);
 }
 
 /** Resolves outcome to a variation key, or undefined if it cannot be. */
@@ -157,6 +197,22 @@ export function evaluateFlag(
   subjectKey: string,
   attributes: Record<string, string> = {},
 ): EvaluationResult {
+  return evaluateFlagTyped(flag, configVersion, subjectKey, stringAttributesToTyped(attributes));
+}
+
+/**
+ * evaluateFlag's typed-attribute counterpart (expand-targeting-model
+ * task 4.7): the entry point a caller supplying a number, boolean or
+ * list attribute (via numberAttr/boolAttr/listAttr, or a client's own
+ * typed-attributes option) reaches. Identical evaluation order and
+ * fail-safe semantics to evaluateFlag.
+ */
+export function evaluateFlagTyped(
+  flag: FlagConfig,
+  configVersion: number,
+  subjectKey: string,
+  attributes: Record<string, AttributeValue> = {},
+): EvaluationResult {
   try {
     return evaluateFlagUnguarded(flag, configVersion, subjectKey, attributes);
   } catch {
@@ -168,14 +224,14 @@ function evaluateFlagUnguarded(
   flag: FlagConfig,
   configVersion: number,
   subjectKey: string,
-  attributes: Record<string, string>,
+  attributes: Record<string, AttributeValue>,
 ): EvaluationResult {
   if (!flag.enabled) {
     return defaultResult(flag, configVersion, "default_disabled");
   }
 
   for (const rule of flag.rules) {
-    if (!conditionsMatch(rule.conditions, attributes)) {
+    if (!ruleMatches(rule, attributes)) {
       continue;
     }
 
