@@ -1,5 +1,14 @@
 # @rollfuse/contracts
 
+## 0.8.5
+
+### Patch Changes
+
+- 4fd452f: Sync the mirrored `openapi.yaml` and regenerate types. Picks up
+  `expand-targeting-model` task 4.1's `Rule.op`/`Rule.value_type` fields
+  (the closed, enumerated operator set beyond exact-string equality),
+  which the growth-ops repo already published but this mirror predated.
+
 ## 0.8.4
 
 ### Patch Changes
