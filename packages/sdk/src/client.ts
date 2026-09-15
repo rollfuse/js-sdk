@@ -237,7 +237,7 @@ export class RollfuseClient {
       throw new FlagNotEvaluableError(flagKey);
     }
 
-    const result = evaluateFlag(flag, config.version, subjectKey, options.attributes ?? {});
+    const result = evaluateFlag(config.flags, flag, config.version, subjectKey, options.attributes ?? {});
 
     this.trackExposure(subjectKey, result);
 
@@ -267,7 +267,7 @@ export class RollfuseClient {
     return config.flags
       .filter((flag: Configuration["flags"][number]) => !flag.non_evaluable)
       .map((flag: Configuration["flags"][number]) => {
-        const result = evaluateFlag(flag, config.version, subjectKey, options.attributes ?? {});
+        const result = evaluateFlag(config.flags, flag, config.version, subjectKey, options.attributes ?? {});
 
         this.trackExposure(subjectKey, result);
 

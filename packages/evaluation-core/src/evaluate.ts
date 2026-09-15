@@ -2,8 +2,14 @@ import type { EvaluationResult, FlagConfig } from "@rollfuse/contracts";
 import { bucket, BUCKET_MODULUS } from "./bucketing.js";
 import {
   type AttributeValue,
+  type IndividualTarget,
+  type Prerequisite,
   matchClause,
+  matchClauseTree,
   readClause,
+  readCondition,
+  readIndividualTargets,
+  readPrerequisites,
   stringAttributesToTyped,
 } from "./clause.js";
 
@@ -12,6 +18,10 @@ export type {
   AttributeValue,
   Clause,
   ClauseOp,
+  ClauseTree,
+  ClauseTreeOp,
+  IndividualTarget,
+  Prerequisite,
 } from "./clause.js";
 export { boolAttr, isBoundedRegex, listAttr, numberAttr, stringAttr } from "./clause.js";
 
@@ -100,6 +110,12 @@ function conditionsMatch(
  * this task (never both on the same rule in practice).
  */
 function ruleMatches(rule: Rule, attributes: Record<string, AttributeValue>): boolean {
+  const condition = readCondition(rule);
+
+  if (condition) {
+    return matchClauseTree(condition, attributes).matched;
+  }
+
   const clause = readClause(rule);
 
   if (clause) {
@@ -190,14 +206,20 @@ function defaultResult(
  * upstream config validation to have caught it — a direct caller of this
  * exported function, bypassing a client's own validated fetch path
  * entirely, is exactly the case this guards.
+ *
+ * flags is the full Configuration.flags array flag itself came from,
+ * needed to resolve any Prerequisite flag_key reference (section 5) with
+ * no extra I/O — pass an empty array if flag has no prerequisites (an
+ * unresolvable prerequisite fails safe as unsatisfied, never throws).
  */
 export function evaluateFlag(
+  flags: FlagConfig[],
   flag: FlagConfig,
   configVersion: number,
   subjectKey: string,
   attributes: Record<string, string> = {},
 ): EvaluationResult {
-  return evaluateFlagTyped(flag, configVersion, subjectKey, stringAttributesToTyped(attributes));
+  return evaluateFlagTyped(flags, flag, configVersion, subjectKey, stringAttributesToTyped(attributes));
 }
 
 /**
@@ -208,26 +230,90 @@ export function evaluateFlag(
  * fail-safe semantics to evaluateFlag.
  */
 export function evaluateFlagTyped(
+  flags: FlagConfig[],
   flag: FlagConfig,
   configVersion: number,
   subjectKey: string,
   attributes: Record<string, AttributeValue> = {},
 ): EvaluationResult {
   try {
-    return evaluateFlagUnguarded(flag, configVersion, subjectKey, attributes);
+    return evaluateFlagUnguarded(flags, flag, configVersion, subjectKey, attributes, 0);
   } catch {
     return defaultResult(flag, configVersion, "default_fallback");
   }
 }
 
+/**
+ * MAX_PREREQUISITE_CHAIN_DEPTH is task 1.2's bound decision (testdata/
+ * README.md: "prerequisite chain length 4"), enforced here as
+ * evaluation's own defensive fail-safe against a chain deeper than
+ * authoring should ever have allowed to be persisted — data that somehow
+ * bypassed the platform's authoring-time cycle/length check degrades to
+ * "unsatisfied" rather than recursing unboundedly, per
+ * feature-evaluation's "A Malformed Or Unsupported Construct Fails Safe"
+ * requirement.
+ */
+const MAX_PREREQUISITE_CHAIN_DEPTH = 4;
+
+function lookupFlagConfig(flags: FlagConfig[], flagKey: string): FlagConfig | undefined {
+  return flags.find((f) => f.flag_key === flagKey);
+}
+
+function includesSubject(target: IndividualTarget, subjectKey: string): boolean {
+  return target.subject_keys.includes(subjectKey);
+}
+
 function evaluateFlagUnguarded(
+  flags: FlagConfig[],
   flag: FlagConfig,
   configVersion: number,
   subjectKey: string,
   attributes: Record<string, AttributeValue>,
+  depth: number,
 ): EvaluationResult {
   if (!flag.enabled) {
     return defaultResult(flag, configVersion, "default_disabled");
+  }
+
+  if (depth > MAX_PREREQUISITE_CHAIN_DEPTH) {
+    return defaultResult(flag, configVersion, "prerequisite_unsatisfied" as EvaluationResult["reason"]);
+  }
+
+  const prerequisites: Prerequisite[] = readPrerequisites(flag);
+
+  for (const prerequisite of prerequisites) {
+    const prerequisiteFlag = lookupFlagConfig(flags, prerequisite.flag_key);
+
+    if (!prerequisiteFlag) {
+      return defaultResult(flag, configVersion, "prerequisite_unsatisfied" as EvaluationResult["reason"]);
+    }
+
+    const result = evaluateFlagUnguarded(flags, prerequisiteFlag, configVersion, subjectKey, attributes, depth + 1);
+
+    if (result.variation_key !== prerequisite.required_variation_key) {
+      return defaultResult(flag, configVersion, "prerequisite_unsatisfied" as EvaluationResult["reason"]);
+    }
+  }
+
+  const individualTargets: IndividualTarget[] = readIndividualTargets(flag);
+
+  for (const target of individualTargets) {
+    if (!includesSubject(target, subjectKey)) {
+      continue;
+    }
+
+    if (!hasVariation(flag, target.variation_key)) {
+      return defaultResult(flag, configVersion, "default_fallback");
+    }
+
+    return {
+      flag_key: flag.flag_key,
+      variation_key: target.variation_key,
+      value: variationValue(flag, target.variation_key),
+      reason: "individual_target" as EvaluationResult["reason"],
+      config_version: configVersion,
+      track_exposure: true,
+    };
   }
 
   for (const rule of flag.rules) {

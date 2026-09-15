@@ -122,6 +122,214 @@ export function readClause(rule: unknown): Clause | undefined {
   return decodeClause(clauses[0]);
 }
 
+/**
+ * MAX_CLAUSE_NESTING_DEPTH is expand-targeting-model task 1.2's bound
+ * decision (testdata/README.md: "nesting depth 5"), enforced here as a
+ * defensive fail-safe against a ClauseTree deeper than authoring should
+ * ever have allowed to be persisted — mirrors the platform's own
+ * MaxClauseNestingDepth and go-sdk's own constant (independent
+ * implementation, same bound).
+ */
+export const MAX_CLAUSE_NESTING_DEPTH = 5;
+
+export type ClauseTreeOp = "leaf" | "and" | "or" | "not";
+
+/**
+ * A rule condition: a single leaf Clause, or a group of child
+ * ClauseTrees combined with AND/OR, or a negation of exactly one child —
+ * environment-flag-targeting's "Clauses Compose With AND, OR And
+ * Negation" requirement. Groups nest to MAX_CLAUSE_NESTING_DEPTH.
+ */
+export interface ClauseTree {
+  op: ClauseTreeOp;
+  leaf?: Clause;
+  children?: ClauseTree[];
+}
+
+/**
+ * Reads a rule's "condition" field (the ClauseTree wire shape,
+ * expand-targeting-model section 5) off an otherwise-untyped wire rule
+ * object, or undefined if absent — same tolerant, runtime-read posture
+ * as readClause, since @rollfuse/contracts does not yet declare this
+ * shape either.
+ */
+export function readCondition(rule: unknown): ClauseTree | undefined {
+  if (typeof rule !== "object" || rule === null || !("condition" in rule)) {
+    return undefined;
+  }
+
+  const condition = (rule as { condition?: unknown }).condition;
+
+  if (condition === undefined || condition === null) {
+    return undefined;
+  }
+
+  return decodeClauseTree(condition);
+}
+
+/**
+ * Decodes the fixture/wire clause-tree shape (testdata/README.md): a
+ * leaf clause has one of the enumerated ClauseOp values directly on
+ * "op"; "and"/"or" carry "clauses"; "not" carries a single "clause";
+ * "segment" (section 7, not implemented by this package yet) decodes to
+ * an always-non-matching leaf rather than failing the whole decode, per
+ * feature-evaluation's "A Malformed Or Unsupported Construct Fails Safe"
+ * requirement.
+ */
+function decodeClauseTree(raw: unknown): ClauseTree | undefined {
+  if (typeof raw !== "object" || raw === null) {
+    return undefined;
+  }
+
+  const r = raw as Record<string, unknown>;
+
+  if (r.op === "and" || r.op === "or") {
+    const rawChildren = Array.isArray(r.clauses) ? r.clauses : [];
+    const children = rawChildren
+      .map((c) => decodeClauseTree(c))
+      .filter((c): c is ClauseTree => c !== undefined);
+
+    return { op: r.op, children };
+  }
+
+  if (r.op === "not") {
+    const child = decodeClauseTree(r.clause);
+
+    return { op: "not", children: child ? [child] : [] };
+  }
+
+  if (r.op === "segment") {
+    return { op: "leaf", leaf: { attribute: "", type: "string", op: "eq" } };
+  }
+
+  const leaf = decodeClause(raw);
+
+  return leaf ? { op: "leaf", leaf } : undefined;
+}
+
+/**
+ * Reports whether attributes satisfies tree, recursively. Negating a
+ * "present" leaf naturally implements the spec's "explicit negated
+ * presence test" with no special-casing: matchClause's "present" op
+ * returns false for an absent attribute, and "not" inverts that to true.
+ *
+ * depth is the caller's own nesting level (0 for the tree's root).
+ * Exceeding MAX_CLAUSE_NESTING_DEPTH fails safe (non-matching, no
+ * diagnostic — a defensive bound, not an operator-authored condition).
+ */
+export function matchClauseTree(
+  tree: ClauseTree,
+  attributes: Record<string, AttributeValue>,
+  depth = 0,
+): { matched: boolean; diagnostic?: string } {
+  if (depth > MAX_CLAUSE_NESTING_DEPTH) {
+    return { matched: false };
+  }
+
+  switch (tree.op) {
+    case "leaf":
+      return tree.leaf ? matchClause(tree.leaf, attributes) : { matched: false };
+    case "not": {
+      const child = tree.children?.[0];
+      if (!child) {
+        return { matched: false };
+      }
+
+      const result = matchClauseTree(child, attributes, depth + 1);
+
+      return { matched: !result.matched, diagnostic: result.diagnostic };
+    }
+    case "and": {
+      let diagnostic: string | undefined;
+
+      for (const child of tree.children ?? []) {
+        const result = matchClauseTree(child, attributes, depth + 1);
+        if (result.diagnostic) diagnostic = result.diagnostic;
+
+        if (!result.matched) {
+          return { matched: false, diagnostic };
+        }
+      }
+
+      return { matched: true, diagnostic };
+    }
+    case "or": {
+      let diagnostic: string | undefined;
+
+      for (const child of tree.children ?? []) {
+        const result = matchClauseTree(child, attributes, depth + 1);
+        if (result.diagnostic) diagnostic = result.diagnostic;
+
+        if (result.matched) {
+          return { matched: true, diagnostic };
+        }
+      }
+
+      return { matched: false, diagnostic };
+    }
+    default:
+      return { matched: false };
+  }
+}
+
+/** A single-key-listed target evaluated before any rule or rollout — environment-flag-targeting's "A Flag May Target Named Individuals" requirement. */
+export interface IndividualTarget {
+  variation_key: string;
+  subject_keys: string[];
+}
+
+/** A dependency on another flag serving required_variation_key before this flag's own targeting applies — environment-flag-targeting's "A Flag May Depend On A Prerequisite Flag" requirement. */
+export interface Prerequisite {
+  flag_key: string;
+  required_variation_key: string;
+}
+
+/** Reads a flag's "individual_targets" array off an otherwise-untyped wire flag object, or an empty array if absent/malformed. */
+export function readIndividualTargets(flag: unknown): IndividualTarget[] {
+  if (typeof flag !== "object" || flag === null || !("individual_targets" in flag)) {
+    return [];
+  }
+
+  const raw = (flag as { individual_targets?: unknown }).individual_targets;
+
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .filter(
+      (t): t is { variation_key: string; subject_keys: string[] } =>
+        typeof t === "object" &&
+        t !== null &&
+        typeof (t as { variation_key?: unknown }).variation_key === "string" &&
+        Array.isArray((t as { subject_keys?: unknown }).subject_keys),
+    )
+    .map((t) => ({ variation_key: t.variation_key, subject_keys: t.subject_keys }));
+}
+
+/** Reads a flag's "prerequisites" array off an otherwise-untyped wire flag object, or an empty array if absent/malformed. */
+export function readPrerequisites(flag: unknown): Prerequisite[] {
+  if (typeof flag !== "object" || flag === null || !("prerequisites" in flag)) {
+    return [];
+  }
+
+  const raw = (flag as { prerequisites?: unknown }).prerequisites;
+
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .filter(
+      (p): p is { flag_key: string; required_variation_key: string } =>
+        typeof p === "object" &&
+        p !== null &&
+        typeof (p as { flag_key?: unknown }).flag_key === "string" &&
+        typeof (p as { required_variation_key?: unknown }).required_variation_key === "string",
+    )
+    .map((p) => ({ flag_key: p.flag_key, required_variation_key: p.required_variation_key }));
+}
+
 function decodeClause(raw: unknown): Clause | undefined {
   if (typeof raw !== "object" || raw === null) {
     return undefined;
