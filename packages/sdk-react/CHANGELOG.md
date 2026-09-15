@@ -1,5 +1,13 @@
 # @rollfuse/sdk-react
 
+## 0.1.7
+
+### Patch Changes
+
+- Updated dependencies [fb842bb]
+  - @rollfuse/evaluation-core@0.5.0
+  - @rollfuse/sdk-browser@0.3.2
+
 ## 0.1.6
 
 ### Patch Changes
