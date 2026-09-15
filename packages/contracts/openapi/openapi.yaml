@@ -14916,6 +14916,12 @@ components:
           description: >-
             References an existing Segment's conditions instead of an
             inline attribute/value pair. Mutually exclusive with attribute.
+        condition:
+          $ref: "#/components/schemas/ClauseTree"
+          description: >-
+            expand-targeting-model's composed condition (AND/OR/negation/
+            nesting) — mutually exclusive with attribute/segment_id. Omitted
+            means this Rule uses the flat leaf shape above instead.
         outcome:
           $ref: "#/components/schemas/Outcome"
 
@@ -14933,8 +14939,67 @@ components:
           type: string
         segment_id:
           type: string
+        condition:
+          $ref: "#/components/schemas/ClauseTree"
         outcome:
           $ref: "#/components/schemas/Outcome"
+
+    ClauseTree:
+      type: object
+      description: >-
+        A rule condition node: a single leaf clause, or a group of child
+        clause_trees combined with AND/OR, or a negation of exactly one
+        child, per environment-flag-targeting's "Clauses Compose With AND,
+        OR And Negation" requirement. Groups nest to a bounded depth
+        (5, expand-targeting-model task 1.2's recorded bound). Mirrors
+        apps/api/internal/evaluation/domain's ClauseTree JSON encoding
+        exactly — there is one wire shape, not two independently-drifting
+        ones.
+      required: [op]
+      properties:
+        op:
+          type: string
+          enum: [leaf, and, or, not, segment]
+        attribute:
+          type: string
+          description: Set only for a leaf node.
+        type:
+          type: string
+          enum: [string, number, boolean, list]
+          description: Set only for a leaf node.
+        value:
+          description: Set only for a leaf node; its shape follows type.
+        clause:
+          $ref: "#/components/schemas/ClauseTree"
+          description: Set only for a "not" node — the single negated child.
+        clauses:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClauseTree"
+          description: Set only for an "and"/"or" node.
+        segment_id:
+          type: string
+          description: Set only for a "segment" node.
+
+    IndividualTarget:
+      type: object
+      required: [variation_id, subject_keys]
+      properties:
+        variation_id:
+          type: string
+        subject_keys:
+          type: array
+          items:
+            type: string
+
+    Prerequisite:
+      type: object
+      required: [feature_flag_id, required_variation_id]
+      properties:
+        feature_flag_id:
+          type: string
+        required_variation_id:
+          type: string
 
     PutEnvironmentFlagConfigRequest:
       type: object
@@ -14949,6 +15014,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RuleInput"
+        individual_targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/IndividualTarget"
+        prerequisites:
+          type: array
+          items:
+            $ref: "#/components/schemas/Prerequisite"
 
     EnvironmentFlagConfig:
       type: object
@@ -14978,6 +15051,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Rule"
+        individual_targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/IndividualTarget"
+        prerequisites:
+          type: array
+          items:
+            $ref: "#/components/schemas/Prerequisite"
         created_at:
           type: string
           format: date-time
@@ -17372,7 +17453,11 @@ components:
             for this Rule to apply. Absent or empty means an unconditional
             catch-all. A Rule that referenced a reusable Segment has that
             Segment's conditions resolved here — the two look identical on
-            the wire.
+            the wire. This flat shape is served whenever the Rule's own
+            condition is exactly representable as it (every pre-section-5
+            Rule, and any composed one that happens to reduce to a flat
+            AND of equality leaves); condition below is served instead
+            when it genuinely needs the composed tree shape.
           items:
             type: object
             required: [attribute, value]
@@ -17381,6 +17466,13 @@ components:
                 type: string
               value:
                 type: string
+        condition:
+          $ref: "#/components/schemas/ClauseTree"
+          description: >-
+            expand-targeting-model's composed condition (AND/OR/negation/
+            nesting) — served instead of conditions when the Rule's own
+            condition cannot be reduced to that flat shape. See conditions'
+            own description for exactly when each is served.
         outcome:
           $ref: "#/components/schemas/EvaluationOutcome"
 
@@ -17415,6 +17507,34 @@ components:
             For Compatibility" requirement. Omitted (false) for every
             flag today, since no construct newer than format version 1
             exists yet.
+        individual_targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvaluationIndividualTarget"
+        prerequisites:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvaluationPrerequisite"
+
+    EvaluationIndividualTarget:
+      type: object
+      required: [variation_key, subject_keys]
+      properties:
+        variation_key:
+          type: string
+        subject_keys:
+          type: array
+          items:
+            type: string
+
+    EvaluationPrerequisite:
+      type: object
+      required: [flag_key, required_variation_key]
+      properties:
+        flag_key:
+          type: string
+        required_variation_key:
+          type: string
 
     Configuration:
       type: object
