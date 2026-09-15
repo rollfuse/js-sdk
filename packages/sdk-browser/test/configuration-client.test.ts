@@ -53,7 +53,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       fetchImpl,
       onConfigRefreshed,
     });
@@ -77,7 +77,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       fetchImpl,
     });
 
@@ -94,7 +94,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       refreshIntervalMs: 30_000,
       fetchImpl,
     });
@@ -118,7 +118,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       refreshIntervalMs: 10,
       fetchImpl,
       onConfigRefreshError,
@@ -166,7 +166,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       refreshIntervalMs: 10,
       fetchImpl,
       onConfigRefreshError,
@@ -193,7 +193,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       refreshIntervalMs: 10,
       fetchImpl,
       onConfigRefreshError,
@@ -218,7 +218,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       refreshIntervalMs: 5_000,
       fetchImpl,
       onConfigRefreshError,
@@ -254,7 +254,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       refreshIntervalMs: 5_000,
       fetchImpl,
     });
@@ -269,7 +269,7 @@ describe("ConfigurationClient", () => {
   });
 
   it("isStale() is true before any successful fetch", () => {
-    const client = new ConfigurationClient({ baseUrl: "http://api.test", publicCredential: "pub_cred" });
+    const client = new ConfigurationClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", streamingDisabled: true });
 
     expect(client.isStale()).toBe(true);
   });
@@ -277,7 +277,7 @@ describe("ConfigurationClient", () => {
   it("isStale() is always false without maxConfigAgeMs, however old the cache", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
 
-    const client = new ConfigurationClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+    const client = new ConfigurationClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", streamingDisabled: true, fetchImpl });
 
     await client.start();
     expect(client.isStale()).toBe(false);
@@ -293,7 +293,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       maxConfigAgeMs: 1_000,
       fetchImpl,
     });
@@ -312,7 +312,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       initTimeoutMs: 3_000,
       fetchImpl,
     });
@@ -332,7 +332,7 @@ describe("ConfigurationClient", () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error("network unreachable"));
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       initTimeoutMs: 5_000,
       fetchImpl,
     });
@@ -363,7 +363,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "wrong-cred",
+      publicCredential: "wrong-cred", streamingDisabled: true,
       initTimeoutMs: 60_000,
       fetchImpl,
       onConfigRefreshError,
@@ -386,7 +386,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "cred-without-permission",
+      publicCredential: "cred-without-permission", streamingDisabled: true,
       fetchImpl,
     });
 
@@ -406,7 +406,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       initTimeoutMs: 5_000,
       fetchImpl,
     });
@@ -441,7 +441,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       refreshIntervalMs: 5_000,
       fetchImpl,
       onConfigRefreshError: () => {
@@ -469,7 +469,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       fetchImpl,
       onConfigRefreshed: () => {
         throw new Error("integrator's success callback itself throws");
@@ -497,7 +497,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       refreshIntervalMs: 5_000,
       fetchImpl,
     });
@@ -537,7 +537,7 @@ describe("ConfigurationClient", () => {
 
       const client = new ConfigurationClient({
         baseUrl: "http://api.test",
-        publicCredential: "pub_cred",
+        publicCredential: "pub_cred", streamingDisabled: true,
         requestTimeoutMs: 50,
         fetchImpl: hangingFetchImpl,
         onConfigRefreshError,
@@ -562,7 +562,7 @@ describe("ConfigurationClient", () => {
 
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       refreshIntervalMs: 10,
       fetchImpl,
     });
@@ -597,7 +597,7 @@ describe("ConfigurationClient", () => {
     const onConfigRefreshError = vi.fn();
     const client = new ConfigurationClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       onConfigRefreshError,
     });
 
@@ -626,7 +626,7 @@ describe("ConfigurationClient", () => {
 
       const client = new ConfigurationClient({
         baseUrl: "http://api.test",
-        publicCredential: "pub_cred",
+        publicCredential: "pub_cred", streamingDisabled: true,
         refreshIntervalMs: 10,
         fetchImpl,
         onConfigRefreshed,
@@ -664,7 +664,7 @@ describe("ConfigurationClient", () => {
 
       const client = new ConfigurationClient({
         baseUrl: "http://api.test",
-        publicCredential: "pub_cred",
+        publicCredential: "pub_cred", streamingDisabled: true,
         refreshIntervalMs: 100,
         maxConfigAgeMs: 150,
         fetchImpl,
@@ -692,7 +692,7 @@ describe("ConfigurationClient", () => {
 
       const client = new ConfigurationClient({
         baseUrl: "http://api.test",
-        publicCredential: "pub_cred",
+        publicCredential: "pub_cred", streamingDisabled: true,
         refreshIntervalMs: 10_000,
         fetchImpl,
       });
@@ -732,7 +732,7 @@ describe("ConfigurationClient", () => {
 
       const clients = Array.from(
         { length: 5 },
-        () => new ConfigurationClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", initTimeoutMs: 60_000, fetchImpl }),
+        () => new ConfigurationClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", streamingDisabled: true, initTimeoutMs: 60_000, fetchImpl }),
       );
 
       for (const client of clients) {
@@ -762,7 +762,7 @@ describe("ConfigurationClient", () => {
 
       const client = new ConfigurationClient({
         baseUrl: "http://api.test",
-        publicCredential: "pub_cred",
+        publicCredential: "pub_cred", streamingDisabled: true,
         fetchImpl,
       });
 
@@ -780,7 +780,7 @@ describe("ConfigurationClient", () => {
 
       const client = new ConfigurationClient({
         baseUrl: "http://api.test",
-        publicCredential: "pub_cred",
+        publicCredential: "pub_cred", streamingDisabled: true,
         refreshIntervalMs: 20_000,
         fetchImpl,
       });

@@ -27,7 +27,7 @@ it("keeps the process alive until start() rejects, even with no other pending wo
     import { RollfuseClient } from ${JSON.stringify(distEntry)};
     const client = new RollfuseClient({
       baseUrl: "http://127.0.0.1:1",
-      credential: "test-credential",
+      credential: "test-credential", streamingDisabled: true,
       initTimeoutMs: 300,
     });
     client.start().catch(() => { process.stdout.write("rejected\\n"); });

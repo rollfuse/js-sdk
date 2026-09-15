@@ -59,7 +59,7 @@ async function readyProvider(...flags: Configuration["flags"]) {
     .fn<typeof fetch>()
     .mockResolvedValue(jsonResponse({ environment_id: "env_test", version: 1, flags }));
 
-  const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "test-credential", fetchImpl });
+  const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "test-credential", streamingDisabled: true, fetchImpl });
   const provider = new RollfuseProvider(client);
 
   await OpenFeature.setProviderAndWait(provider);
@@ -217,7 +217,7 @@ describe("RollfuseProvider", () => {
 
     const client = new RollfuseClient({
       baseUrl: "http://api.test",
-      credential: "test-credential",
+      credential: "test-credential", streamingDisabled: true,
       refreshIntervalMs: 10,
       fetchImpl,
     });
@@ -239,7 +239,7 @@ describe("RollfuseProvider", () => {
 
     const client = new RollfuseClient({
       baseUrl: "http://api.test",
-      credential: "test-credential",
+      credential: "test-credential", streamingDisabled: true,
       initTimeoutMs: 50,
       fetchImpl,
     });
