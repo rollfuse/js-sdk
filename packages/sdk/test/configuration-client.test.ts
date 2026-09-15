@@ -6,6 +6,7 @@ import { CredentialRejectedError, InitializationTimeoutError } from "../src/erro
 const validConfig: Configuration = {
   environment_id: "env_1",
   version: 3,
+  format_version: 1,
   poll_interval_seconds: 30,
   flags: [
     {
@@ -147,6 +148,7 @@ describe("ConfigurationClient", () => {
     const configWithMalformedElement = {
       ...validConfig,
       version: 4,
+      format_version: 1,
       flags: [
         {
           ...validConfig.flags[0],

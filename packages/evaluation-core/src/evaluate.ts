@@ -29,6 +29,17 @@ import { bucket, BUCKET_MODULUS } from "./bucketing.js";
 
 const PERCENTAGE_SCALE = BUCKET_MODULUS / 100;
 
+/**
+ * The highest configuration format version this package's evaluation
+ * logic can interpret — declared to the platform on every GET /v1/config
+ * request via a client's own X-Rollfuse-Client-Format-Version header, per
+ * expand-targeting-model task 3.1. Bump this only alongside actually
+ * implementing whatever new construct the next format version introduces
+ * (task 3.5: a client must never evaluate a construct it does not
+ * support).
+ */
+export const CLIENT_FORMAT_VERSION = 1;
+
 type Rule = FlagConfig["rules"][number];
 type Outcome = Rule["outcome"];
 type RolloutSplit = NonNullable<Outcome["rollout"]>[number];

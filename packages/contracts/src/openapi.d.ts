@@ -5021,11 +5021,15 @@ export interface components {
             default_variation: string;
             variations: components["schemas"]["EvaluationVariation"][];
             rules: components["schemas"]["EvaluationRule"][];
+            /** @description True when this FlagConfig uses a construct newer than the format version the requesting client declared support for via the X-Rollfuse-Client-Format-Version request header (see Configuration.format_version). When true, variations and rules are empty and MUST NOT be evaluated — the client MUST serve the caller's own fallback for this flag instead, per feature-evaluation's "The Configuration Format Is Versioned For Compatibility" requirement. Omitted (false) for every flag today, since no construct newer than format version 1 exists yet. */
+            non_evaluable?: boolean;
         };
         Configuration: {
             environment_id: string;
             /** @description Monotonically increasing Configuration Version for this Environment. Advances whenever a FeatureFlag, its Variations, or an EnvironmentFlagConfig affecting this Environment is created, updated or removed. Also served as GET /v1/config's ETag response header (quoted, e.g. "v3") — a request carrying that value in If-None-Match gets 304 Not Modified with no body instead of a full Configuration. */
             version: number;
+            /** @description The highest configuration format version this platform can serve at all today. Informational: it does not by itself indicate whether any individual flag in `flags` was withheld as non_evaluable for the requesting client's own declared version, which may be lower. */
+            format_version: number;
             flags: components["schemas"]["FlagConfig"][];
             /** @description Advised interval, in seconds, for a client polling GET /v1/config. Paired with the ETag/If-None-Match support above: a client polling at this interval and presenting its last ETag pays only a 304 on most polls. */
             poll_interval_seconds: number;
@@ -13444,6 +13448,8 @@ export interface operations {
             header?: {
                 /** @description An ETag previously returned by this endpoint. If it still matches the current Configuration Version, the response is 304 Not Modified with no body. */
                 "If-None-Match"?: string;
+                /** @description The highest configuration format version this client implements (see Configuration.format_version and FlagConfig.non_evaluable). Omitted by every client that predates this header, which the platform treats identically to declaring the current format version — safe today, since no format version newer than 1 exists yet. */
+                "X-Rollfuse-Client-Format-Version"?: number;
             };
             path?: never;
             cookie?: never;
@@ -13462,6 +13468,7 @@ export interface operations {
                      * @example {
                      *       "environment_id": "018f2f3a-8000-7000-9c3a-1f2b3c4d5e6f",
                      *       "version": 3,
+                     *       "format_version": 1,
                      *       "flags": [
                      *         {
                      *           "flag_key": "checkout-redesign",

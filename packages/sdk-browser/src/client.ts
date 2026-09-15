@@ -1,7 +1,7 @@
 import type { Configuration, EvaluationResult } from "@rollfuse/contracts";
 import { evaluateFlag } from "@rollfuse/evaluation-core";
 import { ConfigurationClient } from "./configuration-client.js";
-import { ConfigNotReadyError, FlagNotFoundError, PublicCredentialRequiredError } from "./errors.js";
+import { ConfigNotReadyError, FlagNotEvaluableError, FlagNotFoundError, PublicCredentialRequiredError } from "./errors.js";
 import { ExposureQueue } from "./exposure-queue.js";
 
 /** Default bound on close() — see RollfusePublicClientOptions.closeTimeoutMs's own doc comment. */
@@ -286,6 +286,14 @@ export class RollfusePublicClient {
       throw new FlagNotFoundError(flagKey);
     }
 
+    if (flag.non_evaluable) {
+      if (Object.hasOwn(options, "fallback")) {
+        return fallbackResult(flagKey, options.fallback, config.version);
+      }
+
+      throw new FlagNotEvaluableError(flagKey);
+    }
+
     const result = evaluateFlag(flag, config.version, subjectKey, options.attributes ?? {});
 
     this.trackExposure(subjectKey, result);
@@ -297,7 +305,9 @@ export class RollfusePublicClient {
    * Evaluates every flag in the cached Configuration for subjectKey.
    * Synchronous — never performs a network request. Throws
    * `ConfigNotReadyError` if no Configuration is available yet (there is
-   * no per-flag fallback concept for "evaluate everything").
+   * no per-flag fallback concept for "evaluate everything"). A flag the
+   * platform marked `non_evaluable` (expand-targeting-model task 3.3) is
+   * omitted entirely rather than guessed at.
    */
   evaluateAll(subjectKey: string, options: EvaluateAllOptions = {}): EvaluationResult[] {
     if (this.configurationClient.isStale()) {
@@ -310,13 +320,15 @@ export class RollfusePublicClient {
       throw new ConfigNotReadyError();
     }
 
-    return config.flags.map((flag: Configuration["flags"][number]) => {
-      const result = evaluateFlag(flag, config.version, subjectKey, options.attributes ?? {});
+    return config.flags
+      .filter((flag: Configuration["flags"][number]) => !flag.non_evaluable)
+      .map((flag: Configuration["flags"][number]) => {
+        const result = evaluateFlag(flag, config.version, subjectKey, options.attributes ?? {});
 
-      this.trackExposure(subjectKey, result);
+        this.trackExposure(subjectKey, result);
 
-      return result;
-    });
+        return result;
+      });
   }
 
   private trackExposure(subjectKey: string, result: EvaluationResult): void {

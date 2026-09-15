@@ -1,11 +1,12 @@
 import type { Configuration } from "@rollfuse/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RollfuseClient } from "../src/client.js";
-import { ConfigNotReadyError, CredentialRequiredError, FlagNotFoundError } from "../src/errors.js";
+import { ConfigNotReadyError, CredentialRequiredError, FlagNotEvaluableError, FlagNotFoundError } from "../src/errors.js";
 
 const validConfig: Configuration = {
   environment_id: "env_1",
   version: 3,
+  format_version: 1,
   poll_interval_seconds: 30,
   flags: [
     {
@@ -126,6 +127,31 @@ describe("RollfuseClient", () => {
       await client.start();
 
       expect(() => client.evaluate("user_1", "does-not-exist")).toThrow(FlagNotFoundError);
+
+      client.stop();
+    });
+
+    it("throws FlagNotEvaluableError for a non_evaluable flag absent a fallback, and serves the caller's fallback when one is supplied (expand-targeting-model task 3.3)", async () => {
+      const nonEvaluableConfig: Configuration = {
+        environment_id: "env_1",
+        version: 1,
+        format_version: 1,
+        poll_interval_seconds: 30,
+        flags: [{ flag_key: "future-flag", enabled: true, default_variation: "off", variations: [], rules: [], non_evaluable: true }],
+      };
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(nonEvaluableConfig));
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+
+      await client.start();
+
+      expect(() => client.evaluate("user_1", "future-flag")).toThrow(FlagNotEvaluableError);
+
+      const result = client.evaluate("user_1", "future-flag", { fallback: "caller-fallback" });
+
+      expect(result.value).toBe("caller-fallback");
+      expect(result.reason).toBe("default_fallback");
+
+      expect(client.evaluateAll("user_1")).toEqual([]);
 
       client.stop();
     });
