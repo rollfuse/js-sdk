@@ -2511,6 +2511,94 @@ paths:
                   message: Environment flag configuration was not found.
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
 
+  /v1/environments/{environment_id}/feature-flags/{feature_flag_id}/config/preview:
+    post:
+      operationId: previewEnvironmentFlagConfig
+      summary: Evaluate a not-yet-saved draft configuration against a sample subject
+      description: >-
+        Requires a session for a Member holding
+        environment-flag-configs:manage. Accepts the same draft shape PUT
+        .../config does, plus a sample subject to evaluate it against —
+        no write happens, and no EnvironmentFlagConfig row needs to exist
+        in advance (expand-targeting-model task 8.6). A Rule referencing a
+        reusable Segment is not resolved for preview: it evaluates as
+        non-matching rather than its real, segment-resolved outcome.
+      tags: [environment-flag-targeting]
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: environment_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: feature_flag_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreviewEnvironmentFlagConfigRequest"
+            example:
+              enabled: true
+              default_variation_id: 018f2f3a-9200-7000-9c3a-1f2b3c4d5e6f
+              rules:
+                - attribute: plan
+                  value: enterprise
+                  outcome:
+                    variation_id: 018f2f3a-9100-7000-9c3a-1f2b3c4d5e6f
+              subject_key: preview-subject
+              attributes:
+                plan:
+                  type: string
+                  string: enterprise
+      responses:
+        "200":
+          description: The variation and reason evaluation would return for this draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewEnvironmentFlagConfigResponse"
+              example:
+                variation_key: "on"
+                reason: rule_match
+        "400":
+          description: >-
+            Validation error, matching PUT .../config's own (a malformed
+            rule, an unknown variation or segment reference, a rollout not
+            summing to 100, the environment and feature flag belonging to
+            different projects).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: >-
+            The session's Member does not hold
+            environment-flag-configs:manage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: >-
+            The environment or the feature flag was not found, or the
+            environment belongs to another Organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/environments/{environment_id}/feature-flags/{feature_flag_id}/disable:
     post:
       operationId: disableEnvironmentFlagConfig
@@ -14851,8 +14939,12 @@ components:
         variation_id:
           type: string
         percentage:
-          type: integer
-          minimum: 1
+          type: number
+          description: >-
+            Up to two decimal places, matching the bucketing space's
+            0.01% resolution (expand-targeting-model task 8.5) — a
+            canary below one percent is expressible.
+          minimum: 0.01
           maximum: 100
 
     Outcome:
@@ -15022,6 +15114,71 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Prerequisite"
+
+    PreviewAttributeValue:
+      type: object
+      required: [type]
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum: [string, number, boolean, list]
+        string:
+          type: string
+        number:
+          type: number
+        boolean:
+          type: boolean
+        list:
+          type: array
+          items:
+            type: string
+
+    PreviewEnvironmentFlagConfigRequest:
+      type: object
+      required: [enabled, default_variation_id, rules, subject_key]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+        default_variation_id:
+          type: string
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleInput"
+        individual_targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/IndividualTarget"
+        prerequisites:
+          type: array
+          items:
+            $ref: "#/components/schemas/Prerequisite"
+        subject_key:
+          type: string
+        attributes:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/PreviewAttributeValue"
+
+    PreviewEnvironmentFlagConfigResponse:
+      type: object
+      required: [variation_key, reason]
+      properties:
+        variation_key:
+          type: string
+        reason:
+          type: string
+          enum:
+            [
+              rule_match,
+              default_disabled,
+              default_no_rule_match,
+              default_fallback,
+              individual_target,
+              prerequisite_unsatisfied,
+            ]
 
     EnvironmentFlagConfig:
       type: object
@@ -17438,8 +17595,11 @@ components:
               variation_key:
                 type: string
               percentage:
-                type: integer
-                minimum: 1
+                type: number
+                description: >-
+                  Up to two decimal places (expand-targeting-model task
+                  8.5).
+                minimum: 0.01
                 maximum: 100
 
     EvaluationRule:

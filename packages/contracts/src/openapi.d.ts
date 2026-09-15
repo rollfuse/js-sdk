@@ -588,6 +588,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/environments/{environment_id}/feature-flags/{feature_flag_id}/config/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate a not-yet-saved draft configuration against a sample subject
+         * @description Requires a session for a Member holding environment-flag-configs:manage. Accepts the same draft shape PUT .../config does, plus a sample subject to evaluate it against — no write happens, and no EnvironmentFlagConfig row needs to exist in advance (expand-targeting-model task 8.6). A Rule referencing a reusable Segment is not resolved for preview: it evaluates as non-matching rather than its real, segment-resolved outcome.
+         */
+        post: operations["previewEnvironmentFlagConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/environments/{environment_id}/feature-flags/{feature_flag_id}/disable": {
         parameters: {
             query?: never;
@@ -3965,6 +3985,7 @@ export interface components {
         };
         RolloutSplit: {
             variation_id: string;
+            /** @description Up to two decimal places, matching the bucketing space's 0.01% resolution (expand-targeting-model task 8.5) — a canary below one percent is expressible. */
             percentage: number;
         };
         Outcome: {
@@ -4034,6 +4055,30 @@ export interface components {
             rules: components["schemas"]["RuleInput"][];
             individual_targets?: components["schemas"]["IndividualTarget"][];
             prerequisites?: components["schemas"]["Prerequisite"][];
+        };
+        PreviewAttributeValue: {
+            /** @enum {string} */
+            type: "string" | "number" | "boolean" | "list";
+            string?: string;
+            number?: number;
+            boolean?: boolean;
+            list?: string[];
+        };
+        PreviewEnvironmentFlagConfigRequest: {
+            enabled: boolean;
+            default_variation_id: string;
+            rules: components["schemas"]["RuleInput"][];
+            individual_targets?: components["schemas"]["IndividualTarget"][];
+            prerequisites?: components["schemas"]["Prerequisite"][];
+            subject_key: string;
+            attributes?: {
+                [key: string]: components["schemas"]["PreviewAttributeValue"];
+            };
+        };
+        PreviewEnvironmentFlagConfigResponse: {
+            variation_key: string;
+            /** @enum {string} */
+            reason: "rule_match" | "default_disabled" | "default_no_rule_match" | "default_fallback" | "individual_target" | "prerequisite_unsatisfied";
         };
         EnvironmentFlagConfig: {
             id: string;
@@ -5051,6 +5096,7 @@ export interface components {
             variation_key?: string;
             rollout?: {
                 variation_key: string;
+                /** @description Up to two decimal places (expand-targeting-model task 8.5). */
                 percentage: number;
             }[];
         };
@@ -8365,6 +8411,97 @@ export interface operations {
                      *       }
                      *     }
                      */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    previewEnvironmentFlagConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                environment_id: string;
+                feature_flag_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "enabled": true,
+                 *       "default_variation_id": "018f2f3a-9200-7000-9c3a-1f2b3c4d5e6f",
+                 *       "rules": [
+                 *         {
+                 *           "attribute": "plan",
+                 *           "value": "enterprise",
+                 *           "outcome": {
+                 *             "variation_id": "018f2f3a-9100-7000-9c3a-1f2b3c4d5e6f"
+                 *           }
+                 *         }
+                 *       ],
+                 *       "subject_key": "preview-subject",
+                 *       "attributes": {
+                 *         "plan": {
+                 *           "type": "string",
+                 *           "string": "enterprise"
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["PreviewEnvironmentFlagConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description The variation and reason evaluation would return for this draft. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "variation_key": "on",
+                     *       "reason": "rule_match"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PreviewEnvironmentFlagConfigResponse"];
+                };
+            };
+            /** @description Validation error, matching PUT .../config's own (a malformed rule, an unknown variation or segment reference, a rollout not summing to 100, the environment and feature flag belonging to different projects). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold environment-flag-configs:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The environment or the feature flag was not found, or the environment belongs to another Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
