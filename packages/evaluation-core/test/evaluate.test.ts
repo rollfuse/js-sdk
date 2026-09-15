@@ -22,7 +22,7 @@ function flag(overrides: Partial<FlagConfig> = {}): FlagConfig {
 describe("evaluateFlag", () => {
   it("serves the default variation when disabled, without evaluating rules", () => {
     const result = evaluateFlag(
-      flag({
+      [], flag({
         enabled: false,
         rules: [{ conditions: [], outcome: { variation_key: "on" } }],
       }),
@@ -42,7 +42,7 @@ describe("evaluateFlag", () => {
 
   it("serves the default variation when no rule matches", () => {
     const result = evaluateFlag(
-      flag({
+      [], flag({
         rules: [
           { conditions: [{ attribute: "plan", value: "enterprise" }], outcome: { variation_key: "on" } },
         ],
@@ -59,7 +59,7 @@ describe("evaluateFlag", () => {
 
   it("a missing attribute never matches a condition", () => {
     const result = evaluateFlag(
-      flag({
+      [], flag({
         rules: [
           { conditions: [{ attribute: "plan", value: "enterprise" }], outcome: { variation_key: "on" } },
         ],
@@ -74,7 +74,7 @@ describe("evaluateFlag", () => {
 
   it("resolves a matched rule's fixed variation and marks exposure", () => {
     const result = evaluateFlag(
-      flag({
+      [], flag({
         rules: [
           { conditions: [{ attribute: "plan", value: "enterprise" }], outcome: { variation_key: "on" } },
         ],
@@ -96,7 +96,7 @@ describe("evaluateFlag", () => {
 
   it("evaluates rules in order, first match wins", () => {
     const result = evaluateFlag(
-      flag({
+      [], flag({
         rules: [
           { conditions: [{ attribute: "plan", value: "enterprise" }], outcome: { variation_key: "on" } },
           { conditions: [], outcome: { variation_key: "off" } }, // unconditional catch-all, would also match
@@ -113,7 +113,7 @@ describe("evaluateFlag", () => {
 
   it("an unconditional rule (no conditions) is a catch-all", () => {
     const result = evaluateFlag(
-      flag({ rules: [{ conditions: [], outcome: { variation_key: "on" } }] }),
+      [], flag({ rules: [{ conditions: [], outcome: { variation_key: "on" } }] }),
       1,
       "user_1",
     );
@@ -124,7 +124,7 @@ describe("evaluateFlag", () => {
 
   it("falls back to the default variation when a matched rule's outcome references an unknown variation", () => {
     const result = evaluateFlag(
-      flag({ rules: [{ conditions: [], outcome: { variation_key: "does-not-exist" } }] }),
+      [], flag({ rules: [{ conditions: [], outcome: { variation_key: "does-not-exist" } }] }),
       1,
       "user_1",
     );
@@ -139,10 +139,10 @@ describe("evaluateFlag", () => {
       rules: [{ conditions: [], outcome: { rollout: [{ variation_key: "on", percentage: 50 }, { variation_key: "off", percentage: 50 }] } }],
     });
 
-    const first = evaluateFlag(f, 1, "user_123");
+    const first = evaluateFlag([], f, 1, "user_123");
 
     for (let i = 0; i < 20; i++) {
-      expect(evaluateFlag(f, 1, "user_123")).toEqual(first);
+      expect(evaluateFlag([], f, 1, "user_123")).toEqual(first);
     }
   });
 
@@ -174,7 +174,7 @@ describe("evaluateFlag", () => {
         const b = bucket(rolloutFlag.flag_key, vector.subject_key);
         const expectedKey = b < 3000 ? "on" : "off";
 
-        const result = evaluateFlag(rolloutFlag, 1, vector.subject_key);
+        const result = evaluateFlag([], rolloutFlag, 1, vector.subject_key);
 
         expect(result.variation_key).toBe(expectedKey);
         expect(result.reason).toBe("rule_match");
@@ -259,9 +259,9 @@ describe("evaluateFlag", () => {
 
     for (const [description, malformedFlag] of malformedFlags) {
       it(`returns the default variation, never throws: ${description}`, () => {
-        expect(() => evaluateFlag(malformedFlag, 1, "user_1")).not.toThrow();
+        expect(() => evaluateFlag([], malformedFlag, 1, "user_1")).not.toThrow();
 
-        const result = evaluateFlag(malformedFlag, 1, "user_1");
+        const result = evaluateFlag([], malformedFlag, 1, "user_1");
 
         expect(result.reason).toMatch(/^default_/);
         expect(result.variation_key).toBe(malformedFlag.default_variation);

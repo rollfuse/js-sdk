@@ -61,7 +61,7 @@ describe("evaluateFlag rollout outcome", () => {
   for (const vector of vectors) {
     it(vector.description, () => {
       const flag = buildFlagConfig(vector);
-      const result = evaluateFlag(flag, 1, vector.subject_key);
+      const result = evaluateFlag([], flag, 1, vector.subject_key);
 
       if (vector.expected_variation_key === null) {
         expect(result.reason).toBe("default_fallback");
