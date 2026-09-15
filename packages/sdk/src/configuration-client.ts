@@ -153,6 +153,28 @@ export class ConfigurationClient {
   private readonly fetchImpl: typeof fetch;
   /** Only set when this instance created its own pooled fetch — never closes a caller-supplied fetchImpl it doesn't own. */
   private readonly ownedPooledFetch: PooledFetch | undefined;
+  /**
+   * A SEPARATE pooled fetch, used only for `GET /v1/config/stream`, with
+   * `bodyTimeout` disabled — never shared with `fetchImpl`/`this.fetchImpl`
+   * (the short-lived polling fetch's pool). `bodyTimeoutMs`'s default
+   * (10s, see DEFAULT_BODY_TIMEOUT_MS) is an INACTIVITY timeout: undici
+   * aborts a request/connection once that long passes with no new bytes
+   * on the body. The platform's own heartbeat interval is 30s (see the
+   * `hello` event's `heartbeat_interval_seconds`) — reusing the polling
+   * pool's default bodyTimeout here would abort every stream connection
+   * roughly 10 seconds after its `hello` event, well before the first
+   * heartbeat could ever arrive, defeating streaming in practice (it
+   * would still be safe — streamLoop's own backoff+reconnect and the
+   * ever-running poll loop mean correctness is unaffected either way —
+   * but the connection would never stay up long enough to deliver a real
+   * benefit). Only constructed when no caller-supplied `fetchImpl` is in
+   * use, matching `ownedPooledFetch`'s own condition; an integrator who
+   * injects a custom transport is responsible for its own timeout policy
+   * on the stream call too, same as every other request this class makes.
+   */
+  private readonly ownedStreamPooledFetch: PooledFetch | undefined;
+  /** The fetch used for `GET /v1/config/stream` specifically — `ownedStreamPooledFetch` by default, or the caller-supplied `fetchImpl` when one was provided. */
+  private readonly streamFetchImpl: typeof fetch;
   private readonly onConfigRefreshed: ((version: number) => void) | undefined;
   private readonly onConfigRefreshError: ((error: unknown) => void) | undefined;
 
@@ -219,6 +241,8 @@ export class ConfigurationClient {
     if (options.fetchImpl) {
       this.fetchImpl = options.fetchImpl;
       this.ownedPooledFetch = undefined;
+      this.streamFetchImpl = options.fetchImpl;
+      this.ownedStreamPooledFetch = undefined;
     } else {
       const pooled = createPooledFetch(this.baseUrl, {
         headersTimeoutMs: options.headersTimeoutMs ?? DEFAULT_HEADERS_TIMEOUT_MS,
@@ -227,6 +251,17 @@ export class ConfigurationClient {
       });
       this.fetchImpl = pooled;
       this.ownedPooledFetch = pooled;
+
+      const streamPooled = createPooledFetch(this.baseUrl, {
+        headersTimeoutMs: options.headersTimeoutMs ?? DEFAULT_HEADERS_TIMEOUT_MS,
+        // Disabled (0): see ownedStreamPooledFetch's own doc comment —
+        // this is a long-lived connection expected to sit idle between
+        // heartbeats, not a short request/response.
+        bodyTimeoutMs: 0,
+        connectTimeoutMs: options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
+      });
+      this.streamFetchImpl = streamPooled;
+      this.ownedStreamPooledFetch = streamPooled;
     }
 
     this.onConfigRefreshed = options.onConfigRefreshed;
@@ -395,6 +430,7 @@ export class ConfigurationClient {
    */
   async close(): Promise<void> {
     await this.ownedPooledFetch?.close();
+    await this.ownedStreamPooledFetch?.close();
   }
 
   /** The currently cached Configuration, or undefined if none has ever been fetched. */
@@ -645,7 +681,7 @@ export class ConfigurationClient {
       trace,
     );
 
-    const response = await this.fetchImpl(`${this.baseUrl}/v1/config/stream`, {
+    const response = await this.streamFetchImpl(`${this.baseUrl}/v1/config/stream`, {
       headers,
       signal: controller.signal,
     });
