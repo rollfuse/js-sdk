@@ -31,6 +31,21 @@ const PERCENTAGE_SCALE = BUCKET_MODULUS / 100;
 
 type Rule = FlagConfig["rules"][number];
 type Outcome = Rule["outcome"];
+type RolloutSplit = NonNullable<Outcome["rollout"]>[number];
+
+/**
+ * Converts a rollout split's wire percentage into bucket positions, the
+ * space `resolveOutcome` actually accumulates in — mirrors the platform's
+ * own `RolloutSplit.BucketPositions` and go-sdk's `RolloutSplit.bucketPositions()`
+ * (expand-targeting-model task 2.2). The wire still carries a whole
+ * percentage (1-100) as of this task — no format-versioning change has
+ * landed yet — so this is a structural fix, not a behavior change: the
+ * conversion is exact for any whole percentage, and `number` here
+ * represents it exactly (well within `Number.MAX_SAFE_INTEGER`).
+ */
+function bucketPositions(split: RolloutSplit): number {
+  return split.percentage * PERCENTAGE_SCALE;
+}
 
 function conditionsMatch(
   conditions: Rule["conditions"],
@@ -62,7 +77,7 @@ function resolveOutcome(
     let cumulative = 0;
 
     for (const split of outcome.rollout) {
-      cumulative += split.percentage * PERCENTAGE_SCALE;
+      cumulative += bucketPositions(split);
 
       if (subjectBucket < cumulative) {
         return split.variation_key;
