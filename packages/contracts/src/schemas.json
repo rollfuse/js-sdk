@@ -1367,10 +1367,42 @@
     "properties": {
       "attribute": {
         "type": "string",
-        "description": "Mutually exclusive with segment_id. Both attribute and value set is an inline equality condition; both empty (with no segment_id) is an unconditional catch-all."
+        "description": "Mutually exclusive with segment_id. Both attribute and value set is a clause condition; both empty (with no segment_id) is an unconditional catch-all."
       },
       "value": {
         "type": "string"
+      },
+      "op": {
+        "type": "string",
+        "description": "The clause operator, from expand-targeting-model's enumerated, closed set. Omitted defaults to eq (exact string equality), matching every Rule authored before this field existed.",
+        "enum": [
+          "eq",
+          "neq",
+          "gt",
+          "gte",
+          "lt",
+          "lte",
+          "in",
+          "prefix",
+          "suffix",
+          "substring",
+          "regex",
+          "semver_gt",
+          "semver_gte",
+          "semver_lt",
+          "semver_lte",
+          "present"
+        ]
+      },
+      "value_type": {
+        "type": "string",
+        "description": "The typed shape value carries. Omitted defaults to string, matching every Rule authored before this field existed.",
+        "enum": [
+          "string",
+          "number",
+          "boolean",
+          "list"
+        ]
       },
       "segment_id": {
         "type": "string",
@@ -1391,6 +1423,12 @@
         "type": "string"
       },
       "value": {
+        "type": "string"
+      },
+      "op": {
+        "type": "string"
+      },
+      "value_type": {
         "type": "string"
       },
       "segment_id": {

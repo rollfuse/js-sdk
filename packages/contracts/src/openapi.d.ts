@@ -3972,9 +3972,19 @@ export interface components {
             rollout?: components["schemas"]["RolloutSplit"][];
         };
         RuleInput: {
-            /** @description Mutually exclusive with segment_id. Both attribute and value set is an inline equality condition; both empty (with no segment_id) is an unconditional catch-all. */
+            /** @description Mutually exclusive with segment_id. Both attribute and value set is a clause condition; both empty (with no segment_id) is an unconditional catch-all. */
             attribute?: string;
             value?: string;
+            /**
+             * @description The clause operator, from expand-targeting-model's enumerated, closed set. Omitted defaults to eq (exact string equality), matching every Rule authored before this field existed.
+             * @enum {string}
+             */
+            op?: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "prefix" | "suffix" | "substring" | "regex" | "semver_gt" | "semver_gte" | "semver_lt" | "semver_lte" | "present";
+            /**
+             * @description The typed shape value carries. Omitted defaults to string, matching every Rule authored before this field existed.
+             * @enum {string}
+             */
+            value_type?: "string" | "number" | "boolean" | "list";
             /** @description References an existing Segment's conditions instead of an inline attribute/value pair. Mutually exclusive with attribute. */
             segment_id?: string;
             outcome: components["schemas"]["Outcome"];
@@ -3982,6 +3992,8 @@ export interface components {
         Rule: {
             attribute?: string;
             value?: string;
+            op?: string;
+            value_type?: string;
             segment_id?: string;
             outcome: components["schemas"]["Outcome"];
         };
