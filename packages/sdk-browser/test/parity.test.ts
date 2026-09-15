@@ -106,6 +106,7 @@ async function clientFor(flag: FlagConfig): Promise<RollfusePublicClient> {
   const config: Configuration = {
     environment_id: "env_1",
     version: 7,
+    format_version: 1,
     poll_interval_seconds: 30,
     flags: [flag],
   };
@@ -226,7 +227,7 @@ describe("evaluation parity with the shared conformance fixture", () => {
     // derived by calling the evaluation core a second time.
     const vector = rolloutVectors.find((v) => v.expected_variation_key !== null)!;
     const flags = [flagFromVector(vector)];
-    const config: Configuration = { environment_id: "env_1", version: 9, poll_interval_seconds: 30, flags };
+    const config: Configuration = { environment_id: "env_1", version: 9, format_version: 1, poll_interval_seconds: 30, flags };
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(config));
     const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
 

@@ -1,5 +1,5 @@
 import type { Configuration } from "@rollfuse/contracts";
-import { applyTraceHeaders, resolveTraceHeaders } from "@rollfuse/evaluation-core";
+import { CLIENT_FORMAT_VERSION, applyTraceHeaders, resolveTraceHeaders } from "@rollfuse/evaluation-core";
 
 import { CredentialRejectedError, InitializationTimeoutError } from "./errors.js";
 import { safeInvoke } from "./safe-invoke.js";
@@ -336,7 +336,16 @@ export class ConfigurationClient {
   private async attemptFetch(): Promise<boolean> {
     try {
       const trace = await resolveTraceHeaders();
-      const headers = applyTraceHeaders({ Authorization: `Bearer ${this.publicCredential}` }, trace);
+      const headers = applyTraceHeaders(
+        {
+          Authorization: `Bearer ${this.publicCredential}`,
+          // Declares this client's own configuration format capability
+          // (expand-targeting-model task 3.1) — see evaluate.ts's
+          // CLIENT_FORMAT_VERSION.
+          "X-Rollfuse-Client-Format-Version": String(CLIENT_FORMAT_VERSION),
+        },
+        trace,
+      );
 
       // Presents the last-seen validator (task 9.1): the platform
       // revalidates against it and responds 304 with no body if the

@@ -37,6 +37,20 @@ export class FlagNotFoundError extends Error {
 }
 
 /**
+ * Thrown by `evaluate` when `flagKey` uses a configuration construct newer
+ * than this client's own CLIENT_FORMAT_VERSION declares support for. No
+ * `fallback` was supplied — per expand-targeting-model task 3.3, there is
+ * no legitimate default value this client can derive for a flag
+ * definition it was never shown.
+ */
+export class FlagNotEvaluableError extends Error {
+  constructor(flagKey: string) {
+    super(`Feature flag "${flagKey}" requires a newer client to evaluate.`);
+    this.name = "FlagNotEvaluableError";
+  }
+}
+
+/**
  * Rejects `start()`'s returned Promise when the platform cannot be
  * reached (or does not respond successfully) within `initTimeoutMs` of
  * the first `start()` call. Per sdk-conformance's "Initialization

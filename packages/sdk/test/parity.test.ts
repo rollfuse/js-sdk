@@ -45,6 +45,7 @@ async function clientFor(flag: FlagConfig): Promise<RollfuseClient> {
   const config: Configuration = {
     environment_id: "env_1",
     version: 7,
+    format_version: 1,
     poll_interval_seconds: 30,
     flags: [flag],
   };
