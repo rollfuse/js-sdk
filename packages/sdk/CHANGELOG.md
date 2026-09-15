@@ -1,5 +1,12 @@
 # @rollfuse/sdk-js
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [2d5c465]
+  - @rollfuse/evaluation-core@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes
