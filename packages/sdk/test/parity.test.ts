@@ -50,7 +50,7 @@ async function clientFor(flag: FlagConfig): Promise<RollfuseClient> {
     flags: [flag],
   };
   const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(config));
-  const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "svc_test.secret", fetchImpl });
+  const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "svc_test.secret", streamingDisabled: true, fetchImpl });
 
   await client.start();
 

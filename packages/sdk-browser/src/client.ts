@@ -1,6 +1,6 @@
 import type { Configuration, EvaluationResult } from "@rollfuse/contracts";
 import { evaluateFlag } from "@rollfuse/evaluation-core";
-import { ConfigurationClient } from "./configuration-client.js";
+import { ConfigurationClient, type TransportInfo } from "./configuration-client.js";
 import { ConfigNotReadyError, FlagNotEvaluableError, FlagNotFoundError, PublicCredentialRequiredError } from "./errors.js";
 import { ExposureQueue } from "./exposure-queue.js";
 
@@ -66,6 +66,8 @@ export interface RollfusePublicClientOptions {
   onExposureDropped?: (count: number) => void;
   /** Called when a batch of ExposureEvents fails to submit. */
   onExposureSubmitError?: (error: unknown) => void;
+  /** When true, GET /v1/config/stream is never attempted; the client relies solely on polling. Streaming is attempted by default. */
+  streamingDisabled?: boolean;
 }
 
 export interface EvaluateOptions {
@@ -126,6 +128,7 @@ export class RollfusePublicClient {
       initTimeoutMs: options.initTimeoutMs,
       requestTimeoutMs: options.requestTimeoutMs,
       fetchImpl: options.fetchImpl,
+      streamingDisabled: options.streamingDisabled,
       onConfigRefreshed: (version) => {
         options.onConfigRefreshed?.(version);
         this.notifyConfigChange();
@@ -247,6 +250,11 @@ export class RollfusePublicClient {
     return () => {
       this.configChangeListeners.delete(listener);
     };
+  }
+
+  /** add-configuration-streaming task 5.7's diagnostic path: which mechanism is currently delivering Configuration changes to this client. */
+  transport(): TransportInfo {
+    return this.configurationClient.transport();
   }
 
   private notifyConfigChange(): void {

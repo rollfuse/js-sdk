@@ -45,7 +45,7 @@ function ReadAllFlags() {
 describe("RollfuseProvider — client-driven mode", () => {
   it("useFlag/useFlags reflect the client's live evaluation once Configuration loads", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(baseConfig));
-    const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+    const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", streamingDisabled: true, fetchImpl });
 
     await act(async () => {
       await client.start();
@@ -86,7 +86,7 @@ describe("RollfuseProvider — client-driven mode", () => {
 
     const client = new RollfusePublicClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       refreshIntervalMs: 1_000,
       fetchImpl,
     });
@@ -116,7 +116,7 @@ describe("RollfuseProvider — client-driven mode", () => {
 
   it("renders with a fallback (never throws) before the client's first Configuration fetch resolves", () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(baseConfig));
-    const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+    const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", streamingDisabled: true, fetchImpl });
 
     // start() intentionally not called/awaited: no Configuration cached yet.
     render(
@@ -132,7 +132,7 @@ describe("RollfuseProvider — client-driven mode", () => {
 
   it("unsubscribes from the client when unmounted", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(baseConfig));
-    const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+    const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", streamingDisabled: true, fetchImpl });
 
     await act(async () => {
       await client.start();
@@ -187,7 +187,7 @@ describe("RollfuseProvider — client-driven mode", () => {
 
     const client = new RollfusePublicClient({
       baseUrl: "http://api.test",
-      publicCredential: "pub_cred",
+      publicCredential: "pub_cred", streamingDisabled: true,
       refreshIntervalMs: 1_000,
       exposureBatchSize: 1_000_000, // never auto-flush on batch size during this test
       fetchImpl,

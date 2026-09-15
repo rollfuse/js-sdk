@@ -46,7 +46,7 @@ afterEach(() => {
 describe("RollfuseClient", () => {
   describe("Explicit Credential Configuration", () => {
     it("throws CredentialRequiredError when constructed without a credential", () => {
-      expect(() => new RollfuseClient({ baseUrl: "http://api.test", credential: "" })).toThrow(
+      expect(() => new RollfuseClient({ baseUrl: "http://api.test", credential: "", streamingDisabled: true })).toThrow(
         CredentialRequiredError,
       );
     });
@@ -56,7 +56,7 @@ describe("RollfuseClient", () => {
       process.env.ROLLFUSE_CREDENTIAL = "svc_from_env.secret";
 
       try {
-        expect(() => new RollfuseClient({ baseUrl: "http://api.test", credential: "" })).toThrow(
+        expect(() => new RollfuseClient({ baseUrl: "http://api.test", credential: "", streamingDisabled: true })).toThrow(
           CredentialRequiredError,
         );
       } finally {
@@ -72,7 +72,7 @@ describe("RollfuseClient", () => {
   describe("Safe Fallback Behavior", () => {
     it("returns the fallback value when no Configuration has been fetched yet", () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
-      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", streamingDisabled: true, fetchImpl });
 
       // start() not called/awaited: no Configuration is cached yet.
       const result = client.evaluate("user_1", "checkout-redesign", { fallback: "fallback-value" });
@@ -84,7 +84,7 @@ describe("RollfuseClient", () => {
 
     it("a non-blocking start() (called but not awaited) still returns the fallback synchronously, without blocking or throwing (task 2.4)", () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
-      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", streamingDisabled: true, fetchImpl });
 
       // Fire-and-forget, exactly as the "Initialization is configured to
       // be non-blocking" scenario describes — deliberately not awaited.
@@ -108,21 +108,21 @@ describe("RollfuseClient", () => {
 
     it("throws ConfigNotReadyError when no Configuration is cached and no fallback is supplied", () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
-      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", streamingDisabled: true, fetchImpl });
 
       expect(() => client.evaluate("user_1", "checkout-redesign")).toThrow(ConfigNotReadyError);
     });
 
     it("evaluateAll throws ConfigNotReadyError when no Configuration is cached", () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
-      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", streamingDisabled: true, fetchImpl });
 
       expect(() => client.evaluateAll("user_1")).toThrow(ConfigNotReadyError);
     });
 
     it("throws FlagNotFoundError for an unknown flag key once Configuration is cached, absent a fallback", async () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
-      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", streamingDisabled: true, fetchImpl });
 
       await client.start();
 
@@ -140,7 +140,7 @@ describe("RollfuseClient", () => {
         flags: [{ flag_key: "future-flag", enabled: true, default_variation: "off", variations: [], rules: [], non_evaluable: true }],
       };
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(nonEvaluableConfig));
-      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", streamingDisabled: true, fetchImpl });
 
       await client.start();
 
@@ -166,7 +166,7 @@ describe("RollfuseClient", () => {
 
       const client = new RollfuseClient({
         baseUrl: "http://api.test",
-        credential: "cred",
+        credential: "cred", streamingDisabled: true,
         refreshIntervalMs: 5_000,
         fetchImpl,
       });
@@ -187,7 +187,7 @@ describe("RollfuseClient", () => {
   describe("Deterministic Local Evaluation", () => {
     it("evaluate does not perform a network request", async () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
-      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", streamingDisabled: true, fetchImpl });
 
       await client.start();
 
@@ -202,7 +202,7 @@ describe("RollfuseClient", () => {
 
     it("evaluateAll returns a result for every flag in the Configuration", async () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
-      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", streamingDisabled: true, fetchImpl });
 
       await client.start();
 
@@ -229,7 +229,7 @@ describe("RollfuseClient", () => {
 
       const client = new RollfuseClient({
         baseUrl: "http://api.test",
-        credential: "cred",
+        credential: "cred", streamingDisabled: true,
         exposureBatchSize: 1,
         fetchImpl: fetchImpl as unknown as typeof fetch,
       });
@@ -268,7 +268,7 @@ describe("RollfuseClient", () => {
 
       const client = new RollfuseClient({
         baseUrl: "http://api.test",
-        credential: "cred",
+        credential: "cred", streamingDisabled: true,
         exposureBatchSize: 1,
         fetchImpl: fetchImpl as unknown as typeof fetch,
       });
@@ -297,7 +297,7 @@ describe("RollfuseClient", () => {
 
       const client = new RollfuseClient({
         baseUrl: "http://api.test",
-        credential: "cred",
+        credential: "cred", streamingDisabled: true,
         exposureBatchSize: 1,
         fetchImpl: fetchImpl as unknown as typeof fetch,
         onExposureSubmitError,
@@ -323,7 +323,7 @@ describe("RollfuseClient", () => {
 
       const client = new RollfuseClient({
         baseUrl: "http://api.test",
-        credential: "cred",
+        credential: "cred", streamingDisabled: true,
         exposureQueueCapacity: 1,
         exposureBatchSize: 1_000_000, // never auto-flush during this test
         fetchImpl,
@@ -354,7 +354,7 @@ describe("RollfuseClient", () => {
         const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
         const client = new RollfuseClient({
           baseUrl: "http://api.test",
-          credential: "cred",
+          credential: "cred", streamingDisabled: true,
           closeTimeoutMs: 5_000,
           fetchImpl,
         });
@@ -391,7 +391,7 @@ describe("RollfuseClient", () => {
 
         const client = new RollfuseClient({
           baseUrl: "http://api.test",
-          credential: "cred",
+          credential: "cred", streamingDisabled: true,
           closeTimeoutMs: 100,
           fetchImpl,
         });
@@ -420,7 +420,7 @@ describe("RollfuseClient", () => {
 
       const client = new RollfuseClient({
         baseUrl: "http://api.test",
-        credential: "cred",
+        credential: "cred", streamingDisabled: true,
         refreshIntervalMs: 1_000,
         fetchImpl,
       });
@@ -457,7 +457,7 @@ describe("RollfuseClient", () => {
 
       const client = new RollfuseClient({
         baseUrl: "http://api.test",
-        credential: "cred",
+        credential: "cred", streamingDisabled: true,
         refreshIntervalMs: 10,
         fetchImpl,
         onConfigRefreshed,
@@ -485,7 +485,7 @@ describe("RollfuseClient", () => {
 
     it("close() releases every registered subscriber, so no listener is retained (task 10.1, mirroring task 8.4)", async () => {
       const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(validConfig));
-      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", fetchImpl });
+      const client = new RollfuseClient({ baseUrl: "http://api.test", credential: "cred", streamingDisabled: true, fetchImpl });
 
       await client.start();
 

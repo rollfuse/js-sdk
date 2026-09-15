@@ -111,7 +111,7 @@ async function clientFor(flag: FlagConfig): Promise<RollfusePublicClient> {
     flags: [flag],
   };
   const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(config));
-  const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+  const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", streamingDisabled: true, fetchImpl });
 
   await client.start();
 
@@ -229,7 +229,7 @@ describe("evaluation parity with the shared conformance fixture", () => {
     const flags = [flagFromVector(vector)];
     const config: Configuration = { environment_id: "env_1", version: 9, format_version: 1, poll_interval_seconds: 30, flags };
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(config));
-    const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", fetchImpl });
+    const client = new RollfusePublicClient({ baseUrl: "http://api.test", publicCredential: "pub_cred", streamingDisabled: true, fetchImpl });
 
     await client.start();
 
