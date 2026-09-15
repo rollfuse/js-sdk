@@ -1336,8 +1336,9 @@
         "type": "string"
       },
       "percentage": {
-        "type": "integer",
-        "minimum": 1,
+        "type": "number",
+        "description": "Up to two decimal places, matching the bucketing space's 0.01% resolution (expand-targeting-model task 8.5) — a canary below one percent is expressible.",
+        "minimum": 0.01,
         "maximum": 100
       }
     }
@@ -1562,6 +1563,107 @@
         "items": {
           "$ref": "#/components/schemas/Prerequisite"
         }
+      }
+    }
+  },
+  "PreviewAttributeValue": {
+    "type": "object",
+    "required": [
+      "type"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "type": {
+        "type": "string",
+        "enum": [
+          "string",
+          "number",
+          "boolean",
+          "list"
+        ]
+      },
+      "string": {
+        "type": "string"
+      },
+      "number": {
+        "type": "number"
+      },
+      "boolean": {
+        "type": "boolean"
+      },
+      "list": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "PreviewEnvironmentFlagConfigRequest": {
+    "type": "object",
+    "required": [
+      "enabled",
+      "default_variation_id",
+      "rules",
+      "subject_key"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "default_variation_id": {
+        "type": "string"
+      },
+      "rules": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/RuleInput"
+        }
+      },
+      "individual_targets": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/IndividualTarget"
+        }
+      },
+      "prerequisites": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Prerequisite"
+        }
+      },
+      "subject_key": {
+        "type": "string"
+      },
+      "attributes": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/components/schemas/PreviewAttributeValue"
+        }
+      }
+    }
+  },
+  "PreviewEnvironmentFlagConfigResponse": {
+    "type": "object",
+    "required": [
+      "variation_key",
+      "reason"
+    ],
+    "properties": {
+      "variation_key": {
+        "type": "string"
+      },
+      "reason": {
+        "type": "string",
+        "enum": [
+          "rule_match",
+          "default_disabled",
+          "default_no_rule_match",
+          "default_fallback",
+          "individual_target",
+          "prerequisite_unsatisfied"
+        ]
       }
     }
   },
@@ -4794,8 +4896,9 @@
               "type": "string"
             },
             "percentage": {
-              "type": "integer",
-              "minimum": 1,
+              "type": "number",
+              "description": "Up to two decimal places (expand-targeting-model task 8.5).",
+              "minimum": 0.01,
               "maximum": 100
             }
           }
