@@ -8,6 +8,7 @@ import { useFlag, useFlags } from "../src/hooks.js";
 const baseConfig: Configuration = {
   environment_id: "env_1",
   version: 1,
+  format_version: 1,
   poll_interval_seconds: 30,
   flags: [
     {
@@ -78,6 +79,7 @@ describe("RollfuseProvider — client-driven mode", () => {
         jsonResponse({
           ...baseConfig,
           version: 2,
+          format_version: 1,
           flags: [{ ...baseConfig.flags[0], rules: [] }], // enterprise rule removed: now always "off"
         }),
       );
