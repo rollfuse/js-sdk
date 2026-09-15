@@ -1,6 +1,6 @@
 {
   "name": "@rollfuse/sdk-js",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -41,8 +41,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@rollfuse/contracts": "^0.8.1",
-    "@rollfuse/evaluation-core": "^0.2.2",
+    "@rollfuse/contracts": "^0.8.4",
+    "@rollfuse/evaluation-core": "^0.3.0",
     "undici": "8.10.0"
   },
   "devDependencies": {

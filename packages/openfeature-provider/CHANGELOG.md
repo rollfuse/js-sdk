@@ -1,5 +1,12 @@
 # @rollfuse/openfeature-provider
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [fc2a352]
+  - @rollfuse/sdk-js@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

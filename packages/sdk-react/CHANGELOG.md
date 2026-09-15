@@ -1,5 +1,14 @@
 # @rollfuse/sdk-react
 
+## 0.1.5
+
+### Patch Changes
+
+- Updated dependencies [fc2a352]
+  - @rollfuse/contracts@0.8.4
+  - @rollfuse/evaluation-core@0.3.0
+  - @rollfuse/sdk-browser@0.3.0
+
 ## 0.1.4
 
 ### Patch Changes
