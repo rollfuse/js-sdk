@@ -61,8 +61,19 @@ const PERCENTAGE_SCALE = BUCKET_MODULUS / 100;
  * implementing whatever new construct the next format version introduces
  * (task 3.5: a client must never evaluate a construct it does not
  * support).
+ *
+ * 2, matching FormatVersion2 (task 9.2's own finding and fix): section
+ * 5.8 already implemented composed ClauseTree, IndividualTarget and
+ * Prerequisite support here, but this constant was left at 1 the whole
+ * time — meaning the platform has been marking every composed/
+ * individual-target/prerequisite flag non_evaluable for this client
+ * regardless, since version negotiation happens before evaluation ever
+ * runs. `percentage`'s own type (`number`, decimal-capable since the
+ * contract's task 8.5 fix) never needed a matching client-side fix the
+ * way go-sdk's `int`-typed field did — this bump is the only change
+ * needed here.
  */
-export const CLIENT_FORMAT_VERSION = 1;
+export const CLIENT_FORMAT_VERSION = 2;
 
 type Rule = FlagConfig["rules"][number];
 type Outcome = Rule["outcome"];

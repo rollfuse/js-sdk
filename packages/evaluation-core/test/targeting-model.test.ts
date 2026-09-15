@@ -233,3 +233,92 @@ describe("evaluateFlagTyped composition/individual-target/prerequisite vectors",
     expect(result.reason).toBe(vector.expected_reason);
   });
 });
+
+/**
+ * How many of the fixture's vectors are a fractional-rollout outcome
+ * (task 2/8.5's own construct) — neither isSingleLeafScope nor
+ * isCompositionScope covers a rollout outcome at all. Deliberately does
+ * NOT include the fixture's 3 segment-membership vectors: this package
+ * has no "segment" clause op (reusable-segments' own "Segment Membership
+ * Is Resolved Consistently For Every Client" requirement is met
+ * structurally — the platform never ships an unresolved segment
+ * reference to any client, per expand-targeting-model task 7.7's own
+ * finding — so those 3 vectors are genuinely not this client's scope to
+ * run, not a gap).
+ */
+const WANT_ROLLOUT_VECTORS_PASSING = 2;
+
+function isRolloutScope(vector: TargetingModelVector): boolean {
+  if (vector.segments) {
+    return false;
+  }
+
+  return vector.rules.some((rule) => !isSingleVariationOutcome(rule));
+}
+
+interface RolloutSplitVector {
+  variation_key: string;
+  bucket_positions: number;
+}
+
+function buildRolloutFlagConfig(vector: TargetingModelVector): FlagConfig {
+  return {
+    flag_key: vector.flag_key,
+    enabled: true,
+    default_variation: vector.default_variation_key,
+    variations: vector.variations.map((v) => ({ key: v.key, value: null })),
+    rules: vector.rules.map((rule) => {
+      if (isSingleVariationOutcome(rule)) {
+        return { outcome: { variation_key: rule.outcome.variation_key } };
+      }
+
+      const splits = rule.outcome.rollout as RolloutSplitVector[];
+
+      return {
+        outcome: {
+          // The fixture's own unit is bucket positions (10000 = the
+          // full space); the wire's own RolloutSplit.percentage is a
+          // decimal share of 100, so convert once here rather than
+          // adding a second, bucket-position-native field the wire
+          // doesn't otherwise carry.
+          rollout: splits.map((s) => ({ variation_key: s.variation_key, percentage: s.bucket_positions / 100 })),
+        },
+      };
+    }) as FlagConfig["rules"],
+  };
+}
+
+/**
+ * evaluateFlagTyped rollout vectors is task 9.2's own finding and fix:
+ * closes the one real gap isSingleLeafScope/isCompositionScope's own
+ * partition left uncovered for this package (the fixture's 3 segment
+ * vectors are genuinely out of scope, see isRolloutScope's own comment
+ * above). Investigating why this was never run surfaced a more serious,
+ * independent bug fixed alongside this test: CLIENT_FORMAT_VERSION
+ * (evaluate.ts) was still 1 despite section 5.8 already implementing
+ * every FormatVersion2 construct (composed ClauseTree, IndividualTarget,
+ * Prerequisite) — meaning the platform has been marking every one of
+ * those flags non_evaluable for this client regardless, since version
+ * negotiation happens before evaluation ever runs. Manually verified
+ * load-bearing: changing buildRolloutFlagConfig's own bucket-position-
+ * to-percentage conversion divisor from 100 to 10000 (an easy typo given
+ * the two different scales in play) turned the precision vector red
+ * (default_fallback instead of rule_match); restored before committing.
+ */
+describe("evaluateFlagTyped rollout vectors", () => {
+  const inScope = vectors.filter(isRolloutScope);
+
+  it(`covers exactly ${WANT_ROLLOUT_VECTORS_PASSING} rollout vectors`, () => {
+    expect(inScope.length).toBe(WANT_ROLLOUT_VECTORS_PASSING);
+  });
+
+  it.each(inScope)("$description", (vector) => {
+    const flag = buildRolloutFlagConfig(vector);
+    const attributes = buildAttributes(vector);
+
+    const result = evaluateFlagTyped([], flag, 1, vector.subject_key, attributes);
+
+    expect(result.variation_key).toBe(vector.expected_variation_key);
+    expect(result.reason).toBe(vector.expected_reason);
+  });
+});
