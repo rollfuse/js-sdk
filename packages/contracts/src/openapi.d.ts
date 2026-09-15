@@ -4023,8 +4023,11 @@ export interface components {
         };
         /** @description A rule condition node: a single leaf clause, or a group of child clause_trees combined with AND/OR, or a negation of exactly one child, per environment-flag-targeting's "Clauses Compose With AND, OR And Negation" requirement. Groups nest to a bounded depth (5, expand-targeting-model task 1.2's recorded bound). Mirrors apps/api/internal/evaluation/domain's ClauseTree JSON encoding exactly — there is one wire shape, not two independently-drifting ones. */
         ClauseTree: {
-            /** @enum {string} */
-            op: "leaf" | "and" | "or" | "not" | "segment";
+            /**
+             * @description A group/negation/segment node names its own kind ("and"/"or"/ "not"/"segment"); a leaf node names its CLAUSE operator directly instead (there is no literal "leaf" value on the wire — apps/api/internal/evaluation/domain's ClauseTree never emits one; a leaf's own operator IS this field).
+             * @enum {string}
+             */
+            op: "and" | "or" | "not" | "segment" | "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "prefix" | "suffix" | "substring" | "regex" | "semver_gt" | "semver_gte" | "semver_lt" | "semver_lte" | "present";
             /** @description Set only for a leaf node. */
             attribute?: string;
             /**
