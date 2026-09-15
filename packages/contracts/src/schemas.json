@@ -1456,12 +1456,28 @@
     "properties": {
       "op": {
         "type": "string",
+        "description": "A group/negation/segment node names its own kind (\"and\"/\"or\"/ \"not\"/\"segment\"); a leaf node names its CLAUSE operator directly instead (there is no literal \"leaf\" value on the wire — apps/api/internal/evaluation/domain's ClauseTree never emits one; a leaf's own operator IS this field).",
         "enum": [
-          "leaf",
           "and",
           "or",
           "not",
-          "segment"
+          "segment",
+          "eq",
+          "neq",
+          "gt",
+          "gte",
+          "lt",
+          "lte",
+          "in",
+          "prefix",
+          "suffix",
+          "substring",
+          "regex",
+          "semver_gt",
+          "semver_gte",
+          "semver_lt",
+          "semver_lte",
+          "present"
         ]
       },
       "attribute": {
