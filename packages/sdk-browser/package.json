@@ -1,6 +1,6 @@
 {
   "name": "@rollfuse/sdk-browser",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -38,8 +38,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@rollfuse/contracts": "^0.8.0",
-    "@rollfuse/evaluation-core": "^0.2.2"
+    "@rollfuse/contracts": "^0.8.4",
+    "@rollfuse/evaluation-core": "^0.3.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
