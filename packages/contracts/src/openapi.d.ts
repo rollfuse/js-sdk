@@ -3987,6 +3987,8 @@ export interface components {
             value_type?: "string" | "number" | "boolean" | "list";
             /** @description References an existing Segment's conditions instead of an inline attribute/value pair. Mutually exclusive with attribute. */
             segment_id?: string;
+            /** @description expand-targeting-model's composed condition (AND/OR/negation/ nesting) — mutually exclusive with attribute/segment_id. Omitted means this Rule uses the flat leaf shape above instead. */
+            condition?: components["schemas"]["ClauseTree"];
             outcome: components["schemas"]["Outcome"];
         };
         Rule: {
@@ -3995,12 +3997,43 @@ export interface components {
             op?: string;
             value_type?: string;
             segment_id?: string;
+            condition?: components["schemas"]["ClauseTree"];
             outcome: components["schemas"]["Outcome"];
+        };
+        /** @description A rule condition node: a single leaf clause, or a group of child clause_trees combined with AND/OR, or a negation of exactly one child, per environment-flag-targeting's "Clauses Compose With AND, OR And Negation" requirement. Groups nest to a bounded depth (5, expand-targeting-model task 1.2's recorded bound). Mirrors apps/api/internal/evaluation/domain's ClauseTree JSON encoding exactly — there is one wire shape, not two independently-drifting ones. */
+        ClauseTree: {
+            /** @enum {string} */
+            op: "leaf" | "and" | "or" | "not" | "segment";
+            /** @description Set only for a leaf node. */
+            attribute?: string;
+            /**
+             * @description Set only for a leaf node.
+             * @enum {string}
+             */
+            type?: "string" | "number" | "boolean" | "list";
+            /** @description Set only for a leaf node; its shape follows type. */
+            value?: unknown;
+            /** @description Set only for a "not" node — the single negated child. */
+            clause?: components["schemas"]["ClauseTree"];
+            /** @description Set only for an "and"/"or" node. */
+            clauses?: components["schemas"]["ClauseTree"][];
+            /** @description Set only for a "segment" node. */
+            segment_id?: string;
+        };
+        IndividualTarget: {
+            variation_id: string;
+            subject_keys: string[];
+        };
+        Prerequisite: {
+            feature_flag_id: string;
+            required_variation_id: string;
         };
         PutEnvironmentFlagConfigRequest: {
             enabled: boolean;
             default_variation_id: string;
             rules: components["schemas"]["RuleInput"][];
+            individual_targets?: components["schemas"]["IndividualTarget"][];
+            prerequisites?: components["schemas"]["Prerequisite"][];
         };
         EnvironmentFlagConfig: {
             id: string;
@@ -4009,6 +4042,8 @@ export interface components {
             enabled: boolean;
             default_variation_id: string;
             rules: components["schemas"]["Rule"][];
+            individual_targets?: components["schemas"]["IndividualTarget"][];
+            prerequisites?: components["schemas"]["Prerequisite"][];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -5020,11 +5055,13 @@ export interface components {
             }[];
         };
         EvaluationRule: {
-            /** @description Attribute-equality conditions that MUST ALL match (logical AND) for this Rule to apply. Absent or empty means an unconditional catch-all. A Rule that referenced a reusable Segment has that Segment's conditions resolved here — the two look identical on the wire. */
+            /** @description Attribute-equality conditions that MUST ALL match (logical AND) for this Rule to apply. Absent or empty means an unconditional catch-all. A Rule that referenced a reusable Segment has that Segment's conditions resolved here — the two look identical on the wire. This flat shape is served whenever the Rule's own condition is exactly representable as it (every pre-section-5 Rule, and any composed one that happens to reduce to a flat AND of equality leaves); condition below is served instead when it genuinely needs the composed tree shape. */
             conditions?: {
                 attribute: string;
                 value: string;
             }[];
+            /** @description expand-targeting-model's composed condition (AND/OR/negation/ nesting) — served instead of conditions when the Rule's own condition cannot be reduced to that flat shape. See conditions' own description for exactly when each is served. */
+            condition?: components["schemas"]["ClauseTree"];
             outcome: components["schemas"]["EvaluationOutcome"];
         };
         FlagConfig: {
@@ -5035,6 +5072,16 @@ export interface components {
             rules: components["schemas"]["EvaluationRule"][];
             /** @description True when this FlagConfig uses a construct newer than the format version the requesting client declared support for via the X-Rollfuse-Client-Format-Version request header (see Configuration.format_version). When true, variations and rules are empty and MUST NOT be evaluated — the client MUST serve the caller's own fallback for this flag instead, per feature-evaluation's "The Configuration Format Is Versioned For Compatibility" requirement. Omitted (false) for every flag today, since no construct newer than format version 1 exists yet. */
             non_evaluable?: boolean;
+            individual_targets?: components["schemas"]["EvaluationIndividualTarget"][];
+            prerequisites?: components["schemas"]["EvaluationPrerequisite"][];
+        };
+        EvaluationIndividualTarget: {
+            variation_key: string;
+            subject_keys: string[];
+        };
+        EvaluationPrerequisite: {
+            flag_key: string;
+            required_variation_key: string;
         };
         Configuration: {
             environment_id: string;
