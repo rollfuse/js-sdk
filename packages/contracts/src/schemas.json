@@ -1743,8 +1743,7 @@
     "type": "object",
     "description": "Discriminated by status: \"applied\" nests the resulting environment_flag_config (the write took effect immediately, as before governance change control existed); \"pending_approval\" instead carries pending_approval_request_id -- the owning Environment requires approval and the change is held rather than applied.",
     "required": [
-      "status",
-      "environment_flag_config"
+      "status"
     ],
     "properties": {
       "status": {
