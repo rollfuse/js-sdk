@@ -4102,7 +4102,7 @@ export interface components {
             /** @enum {string} */
             status: "applied" | "pending_approval";
             pending_approval_request_id?: string;
-            environment_flag_config: components["schemas"]["EnvironmentFlagConfig"];
+            environment_flag_config?: components["schemas"]["EnvironmentFlagConfig"];
         };
         EnvironmentFlagConfigSummary: {
             id: string;
