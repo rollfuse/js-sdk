@@ -234,17 +234,113 @@ describe("evaluateFlagTyped composition/individual-target/prerequisite vectors",
   });
 });
 
+const WANT_SEGMENT_VECTORS_PASSING = 3;
+
+function isSegmentScope(vector: TargetingModelVector): boolean {
+  return Boolean(vector.segments);
+}
+
+/**
+ * resolveSegmentClause substitutes every {op: "segment", segment_key}
+ * node, recursively, with the referenced segment's own raw clause —
+ * operating on the fixture's raw wire shape (the same shape
+ * decodeClauseTree in clause.ts reads), mirroring apps/api's
+ * domain.ResolveSegments exactly. This package has no segment-resolution
+ * code of its own (reusable-segments' own requirement is met
+ * structurally: the platform never ships an unresolved segment reference
+ * to any client — see decodeClauseTree's own "segment" case, an
+ * always-non-matching fail-safe fallback for a reference that should
+ * never actually arrive), so this function exists only here, in the
+ * test, standing in for what the platform already does server-side
+ * before task 7.7's own claim ("no client ever evaluates a segment
+ * reference differently from the platform") can be checked end-to-end
+ * through this client's real evaluateFlagTyped, not merely reasoned
+ * about structurally.
+ */
+function resolveSegmentClause(
+  clause: ClauseVector | null | undefined,
+  segments: Record<string, { clause: ClauseVector }>,
+): ClauseVector | null | undefined {
+  if (!clause) {
+    return clause;
+  }
+
+  if (clause.op === "segment") {
+    const segment = clause.segment_key ? segments[clause.segment_key] : undefined;
+
+    if (!segment) {
+      throw new Error(`fixture error: unknown segment ${String(clause.segment_key)}`);
+    }
+
+    return resolveSegmentClause(segment.clause, segments);
+  }
+
+  if (clause.op === "not" && clause.clause) {
+    return { ...clause, clause: resolveSegmentClause(clause.clause, segments) ?? undefined };
+  }
+
+  if ((clause.op === "and" || clause.op === "or") && clause.clauses) {
+    return {
+      ...clause,
+      clauses: clause.clauses
+        .map((child) => resolveSegmentClause(child, segments))
+        .filter((child): child is ClauseVector => child != null),
+    };
+  }
+
+  return clause;
+}
+
+function buildSegmentResolvedFlagConfig(vector: TargetingModelVector): FlagConfig {
+  const segments = (vector.segments ?? {}) as Record<string, { clause: ClauseVector }>;
+
+  return {
+    flag_key: vector.flag_key,
+    enabled: true,
+    default_variation: vector.default_variation_key,
+    variations: vector.variations.map((v) => ({ key: v.key, value: null })),
+    rules: vector.rules.map((rule) => ({
+      ...(rule.clause ? { condition: resolveSegmentClause(rule.clause, segments) } : {}),
+      outcome: { variation_key: rule.outcome.variation_key },
+    })) as FlagConfig["rules"],
+  } as FlagConfig;
+}
+
+/**
+ * expand-targeting-model task 7.7: proves — rather than only reasons
+ * about structurally — that this client evaluates a segment-membership
+ * Rule identically to the platform, by resolving the fixture's raw
+ * segment reference exactly as the platform's own
+ * domain.ResolveSegments does, then running the RESULT through this
+ * client's real evaluateFlagTyped, the same entry point every other
+ * vector in this file goes through.
+ */
+describe("evaluateFlagTyped segment-membership vectors (resolved exactly as the platform resolves them before serving)", () => {
+  const inScope = vectors.filter(isSegmentScope);
+
+  it(`covers exactly ${WANT_SEGMENT_VECTORS_PASSING} segment-membership vectors`, () => {
+    expect(inScope.length).toBe(WANT_SEGMENT_VECTORS_PASSING);
+  });
+
+  it.each(inScope)("$description", (vector) => {
+    const flag = buildSegmentResolvedFlagConfig(vector);
+    const attributes = buildAttributes(vector);
+
+    const result = evaluateFlagTyped([], flag, 1, vector.subject_key, attributes);
+
+    expect(result.variation_key).toBe(vector.expected_variation_key);
+    expect(result.reason).toBe(vector.expected_reason);
+  });
+});
+
 /**
  * How many of the fixture's vectors are a fractional-rollout outcome
  * (task 2/8.5's own construct) — neither isSingleLeafScope nor
  * isCompositionScope covers a rollout outcome at all. Deliberately does
- * NOT include the fixture's 3 segment-membership vectors: this package
- * has no "segment" clause op (reusable-segments' own "Segment Membership
- * Is Resolved Consistently For Every Client" requirement is met
- * structurally — the platform never ships an unresolved segment
- * reference to any client, per expand-targeting-model task 7.7's own
- * finding — so those 3 vectors are genuinely not this client's scope to
- * run, not a gap).
+ * NOT include the fixture's 3 segment-membership vectors: those are
+ * isSegmentScope's own count, run separately above (each is a
+ * single-variation outcome, not a rollout, so this exclusion is a
+ * category boundary, not a gap).
  */
 const WANT_ROLLOUT_VECTORS_PASSING = 2;
 
