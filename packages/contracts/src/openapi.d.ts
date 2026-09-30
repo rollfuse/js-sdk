@@ -830,6 +830,30 @@ export interface paths {
          */
         put: operations["updateSegment"];
         post?: never;
+        /**
+         * Permanently delete a Segment
+         * @description Requires a session for a Member holding segments:manage. Refused with segment_has_dependents, naming every referencing FeatureFlag, when at least one Rule -- in either the flat SegmentID shape or a tree-embedded ClauseTreeSegment leaf -- still references the Segment (expand-targeting-model task 7.4). There is no archive or soft-delete variant: a Segment carries no state of its own that "disabled but kept" would mean, so this is the only removal path. A Segment owned by a Project outside the caller's own Organization is rejected identically to an unknown one.
+         */
+        delete: operations["deleteSegment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/segments/{segment_id}/referencing-flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every FeatureFlag that references a Segment
+         * @description Requires a session for a Member holding segments:manage or segments:read. Scans every Rule in every Environment of the Segment's own Project for a reference to it -- a flat Rule segment_id, or a tree-embedded segment leaf nested anywhere inside a composed AND/OR/NOT condition -- and returns the distinct FeatureFlag ids found (expand-targeting-model task 7.3). Because a Rule references a Segment by identity, not by its current conditions, this listing also answers "which flags would this Segment's next edit affect" (task 7.5): call it before saving an edit, not only after, to preview the impact -- editing what a Segment means never changes which flags reference it. A Segment owned by a Project outside the caller's own Organization is rejected identically to an unknown one.
+         */
+        get: operations["listSegmentReferences"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1760,6 +1784,28 @@ export interface paths {
          * @description Credential-authenticated endpoint (Bearer token, requires the config:read scope). Unlike every other endpoint in this document, this one IS authenticated from day one: it is the first endpoint a Service Credential (rather than a human/operator) calls. Returns every FeatureFlag owned by the Credential's own Project, configured for the Credential's own Environment, plus the current Configuration Version. A Credential can never retrieve another Environment's configuration: the query scope comes solely from the resolved Credential, never from a request parameter. Supports a conditional GET: the response carries an ETag derived from version; presenting that value via If-None-Match on a later request gets 304 Not Modified with no body if nothing changed. See poll_interval_seconds on the response for the advised polling interval.
          */
         get: operations["getConfiguration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/config/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hold a connection open and be notified when the caller's Environment configuration changes
+         * @description Credential-authenticated (Bearer token, requires the config:read scope) Server-Sent Events endpoint (add-configuration-streaming). A connection is scoped to the Credential's own Environment exactly like GET /v1/config — never to another Organization's Environment, and never from a request parameter. The FIRST event on every connection is always `hello`, disclosing `heartbeat_interval_seconds`, `max_lifetime_seconds` and `poll_interval_seconds` (the reduced poll interval a connected client should fall back to). After `hello`, the stream emits a `version` event whose `data` is the new Configuration Version as a bare integer (NEVER the configuration itself), and a bare SSE comment (`: heartbeat`) at the disclosed interval on an otherwise-idle connection. A client compares the notified version against the version it already holds and only then revalidates via GET /v1/config. Streaming is an optimization, never a correctness dependency: a client that cannot connect, or whose connection breaks or falls silent past the heartbeat window, MUST continue polling GET /v1/config and remains fully correct while doing so.
+         *
+         *     This endpoint is disabled by default (CONFIGURATION_STREAMING_ENABLED=false) and, while disabled, is not mounted at all — a request gets an ordinary 404, not one of the response codes documented below. The connection is bounded per credential and globally (see the 429/503 responses below), closed after a jittered maximum lifetime (the client reconnects with randomized backoff), and heartbeated — see design-decisions.md in this change for the concrete starting values.
+         */
+        get: operations["streamConfiguration"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4092,6 +4138,11 @@ export interface components {
             rules: components["schemas"]["Rule"][];
             individual_targets?: components["schemas"]["IndividualTarget"][];
             prerequisites?: components["schemas"]["Prerequisite"][];
+            /**
+             * @description The lowest configuration format version (see CurrentFormatVersion in feature-evaluation's own design) a client must support to evaluate this configuration's targeting correctly -- expand-targeting-model task 3.4. A client declaring a lower format version receives the default variation for this flag rather than a wrong evaluation.
+             * @example 1
+             */
+            min_format_version: number;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -5143,6 +5194,7 @@ export interface components {
             poll_interval_seconds: number;
         };
         EvaluateRequest: {
+            /** @description Must not be blank. Rule-matched results record an exposure with this key, so it follows the same limit as a submitted exposure's subject_key. */
             subject_key: string;
             attributes?: {
                 [key: string]: string;
@@ -5181,11 +5233,13 @@ export interface components {
             /** @description Whether more ExposureEvents exist beyond this page. Set by GET /v1/environments/{environment_id}/feature-flags/{feature_flag_id}/exposure-events; absent from GET /v1/experiments/{experiment_id}/exposure-events. */
             has_more?: boolean;
         };
+        /** @description Every string field must not be blank. An event that breaks any constraint refuses the whole submission with exposure_submission_validation_error naming the event's index. */
         ExposureEventSubmission: {
             flag_key: string;
             subject_key: string;
             variation_key: string;
             reason: string;
+            /** Format: int64 */
             config_version: number;
             /** @description Client-generated. Falls back to the request's own request id when omitted. */
             correlation_id?: string;
@@ -5230,6 +5284,9 @@ export interface components {
         };
         SegmentList: {
             segments: components["schemas"]["Segment"][];
+        };
+        SegmentReferencesResponse: {
+            feature_flag_ids: string[];
         };
         CreateMetricDefinitionRequest: {
             name: string;
@@ -8205,6 +8262,7 @@ export interface operations {
                      *       "enabled": true,
                      *       "default_variation_id": "018f2f3a-9200-7000-9c3a-1f2b3c4d5e6f",
                      *       "rules": [],
+                     *       "min_format_version": 1,
                      *       "created_at": "2026-01-01T12:00:00Z",
                      *       "updated_at": "2026-01-01T12:00:00Z"
                      *     }
@@ -8319,6 +8377,7 @@ export interface operations {
                      *             }
                      *           }
                      *         ],
+                     *         "min_format_version": 1,
                      *         "created_at": "2026-01-01T12:00:00Z",
                      *         "updated_at": "2026-01-01T12:00:00Z"
                      *       }
@@ -9583,6 +9642,146 @@ export interface operations {
                 };
             };
             /** @description The session's Member does not hold segments:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Segment was not found, or is owned by a Project in another Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "segment_not_found",
+                     *         "message": "Segment was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteSegment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                segment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Segment deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member does not hold segments:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Segment was not found, or is owned by a Project in another Organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "segment_not_found",
+                     *         "message": "Segment was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Segment is still referenced by at least one FeatureFlag, naming every one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "segment_has_dependents",
+                     *         "message": "segment: cannot be deleted while referenced by feature_flag flag_1",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listSegmentReferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                segment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every distinct FeatureFlag id referencing the Segment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "feature_flag_ids": [
+                     *         "018f2f3a-c000-7000-9c3a-1f2b3c4d5e6f",
+                     *         "018f2f3a-d111-7000-9c3a-1f2b3c4d5e6f"
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SegmentReferencesResponse"];
+                };
+            };
+            /** @description Missing or invalid session token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session's Member holds neither segments:manage nor segments:read. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -13758,6 +13957,138 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Rate limited (rate_limited): either this Credential exceeded its request rate, or too many requests from this client address failed Credential authentication. Retry-After says when to retry. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "rate_limited",
+                     *         "message": "Too many requests for this credential. Please try again later.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request exceeded its deadline and was shed (request_deadline_exceeded). Retry after the Retry-After delay. */
+            503: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "request_deadline_exceeded",
+                     *         "message": "The request took too long to complete. Please try again.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    streamConfiguration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The connection is open. The response body is an unbounded `text/event-stream`: one `hello` event first, then any mix of `version` events and bare heartbeat comments; there is no defined end to this response short of the connection closing (client disconnect, or the platform closing it at its maximum lifetime). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Missing, unknown, revoked or otherwise invalid Credential token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "credential_invalid",
+                     *         "message": "A valid bearer credential is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Credential does not grant the config:read scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "credential_scope_denied",
+                     *         "message": "The credential does not grant the required scope.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description This Credential already holds its maximum number of concurrent streaming connections (streaming_credential_limit_exceeded), or too many requests from this client address failed Credential authentication (rate_limited). The client MUST fall back to polling GET /v1/config; a Retry-After header (seconds) is included. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "streaming_credential_limit_exceeded",
+                     *         "message": "This credential already holds its maximum number of concurrent streaming connections. Fall back to polling GET /v1/config.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The platform is at its maximum total number of concurrent streaming connections, across every credential. The client MUST fall back to polling GET /v1/config; a Retry-After header (seconds) is included. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "streaming_capacity_exceeded",
+                     *         "message": "The platform is at its maximum number of concurrent streaming connections. Fall back to polling GET /v1/config.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
     evaluateFlags: {
@@ -13868,6 +14199,46 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Rate limited (rate_limited): either this Credential exceeded its request rate, or too many requests from this client address failed Credential authentication. Retry-After says when to retry. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "rate_limited",
+                     *         "message": "Too many requests for this credential. Please try again later.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request exceeded its deadline and was shed (request_deadline_exceeded). Retry after the Retry-After delay. */
+            503: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "request_deadline_exceeded",
+                     *         "message": "The request took too long to complete. Please try again.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
     submitExposureEvents: {
@@ -13950,6 +14321,46 @@ export interface operations {
                      *       "error": {
                      *         "code": "credential_scope_denied",
                      *         "message": "The credential does not grant the required scope.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited (rate_limited): either this Credential exceeded its request rate, or too many requests from this client address failed Credential authentication. Retry-After says when to retry. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "rate_limited",
+                     *         "message": "Too many requests for this credential. Please try again later.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request exceeded its deadline and was shed (request_deadline_exceeded). Retry after the Retry-After delay. */
+            503: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "request_deadline_exceeded",
+                     *         "message": "The request took too long to complete. Please try again.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -14719,6 +15130,46 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Too many requests from this client address failed Credential authentication (rate_limited). Refused before any credential lookup; Retry-After says when to retry. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "rate_limited",
+                     *         "message": "Too many failed authentication attempts. Please try again later.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request exceeded its deadline and was shed (request_deadline_exceeded). Retry after the Retry-After delay. */
+            503: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "request_deadline_exceeded",
+                     *         "message": "The request took too long to complete. Please try again.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
     listObservationsForSubject: {
@@ -14910,6 +15361,46 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Too many requests from this client address failed Credential authentication (rate_limited). Refused before any credential lookup; Retry-After says when to retry. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "rate_limited",
+                     *         "message": "Too many failed authentication attempts. Please try again later.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request exceeded its deadline and was shed (request_deadline_exceeded). Retry after the Retry-After delay. */
+            503: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "request_deadline_exceeded",
+                     *         "message": "The request took too long to complete. Please try again.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
     getAcquisitionContext: {
@@ -15053,6 +15544,46 @@ export interface operations {
                      *       "error": {
                      *         "code": "credential_scope_denied",
                      *         "message": "The credential does not grant the required scope.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this client address failed Credential authentication (rate_limited). Refused before any credential lookup; Retry-After says when to retry. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "rate_limited",
+                     *         "message": "Too many failed authentication attempts. Please try again later.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request exceeded its deadline and was shed (request_deadline_exceeded). Retry after the Retry-After delay. */
+            503: {
+                headers: {
+                    /** @description Seconds to wait before retrying. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "request_deadline_exceeded",
+                     *         "message": "The request took too long to complete. Please try again.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
