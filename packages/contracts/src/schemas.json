@@ -1692,6 +1692,7 @@
       "enabled",
       "default_variation_id",
       "rules",
+      "min_format_version",
       "created_at",
       "updated_at"
     ],
@@ -1728,6 +1729,11 @@
         "items": {
           "$ref": "#/components/schemas/Prerequisite"
         }
+      },
+      "min_format_version": {
+        "type": "integer",
+        "description": "The lowest configuration format version (see CurrentFormatVersion in feature-evaluation's own design) a client must support to evaluate this configuration's targeting correctly -- expand-targeting-model task 3.4. A client declaring a lower format version receives the default variation for this flag rather than a wrong evaluation.",
+        "example": 1
       },
       "created_at": {
         "type": "string",
@@ -5078,7 +5084,10 @@
     "additionalProperties": false,
     "properties": {
       "subject_key": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512,
+        "description": "Must not be blank. Rule-matched results record an exposure with this key, so it follows the same limit as a submitted exposure's subject_key."
       },
       "attributes": {
         "type": "object",
@@ -5220,24 +5229,37 @@
       "reason",
       "config_version"
     ],
+    "description": "Every string field must not be blank. An event that breaks any constraint refuses the whole submission with exposure_submission_validation_error naming the event's index.",
     "properties": {
       "flag_key": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
       },
       "subject_key": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
       },
       "variation_key": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
       },
       "reason": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
       },
       "config_version": {
-        "type": "integer"
+        "type": "integer",
+        "format": "int64",
+        "minimum": 1
       },
       "correlation_id": {
         "type": "string",
+        "minLength": 1,
+        "maxLength": 512,
         "description": "Client-generated. Falls back to the request's own request id when omitted."
       },
       "occurred_at": {
@@ -5393,6 +5415,20 @@
         "type": "array",
         "items": {
           "$ref": "#/components/schemas/Segment"
+        }
+      }
+    }
+  },
+  "SegmentReferencesResponse": {
+    "type": "object",
+    "required": [
+      "feature_flag_ids"
+    ],
+    "properties": {
+      "feature_flag_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
         }
       }
     }

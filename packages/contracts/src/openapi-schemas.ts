@@ -204,6 +204,7 @@ export type Segment = components["schemas"]["Segment"];
 export type SegmentCondition = components["schemas"]["SegmentCondition"];
 export type SegmentConditionInput = components["schemas"]["SegmentConditionInput"];
 export type SegmentList = components["schemas"]["SegmentList"];
+export type SegmentReferencesResponse = components["schemas"]["SegmentReferencesResponse"];
 export type SetEnvironmentApprovalPolicyRequest = components["schemas"]["SetEnvironmentApprovalPolicyRequest"];
 export type SetEnvironmentProductionRequest = components["schemas"]["SetEnvironmentProductionRequest"];
 export type StaffCharge = components["schemas"]["StaffCharge"];
