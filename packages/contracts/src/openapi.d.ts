@@ -3759,6 +3759,12 @@ export interface components {
             utm_content?: string;
             landing_url?: string;
             referrer?: string;
+            /** @description Google Ads click identifier read from the landing URL. Sent only while the visitor's decision grants `marketing`, and persisted only when the consent block in the same request grants it. A value longer than 512 characters or outside `[A-Za-z0-9_-]` is dropped without rejecting the batch. */
+            gclid?: string;
+            /** @description Google Ads app-to-web click identifier; same rules as `gclid`. */
+            gbraid?: string;
+            /** @description Google Ads web-to-app click identifier; same rules as `gclid`. */
+            wbraid?: string;
         };
         VisitorJourneyEvent: {
             /**
