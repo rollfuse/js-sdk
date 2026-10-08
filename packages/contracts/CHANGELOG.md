@@ -1,5 +1,14 @@
 # @rollfuse/contracts
 
+## 0.8.11
+
+### Patch Changes
+
+- 7547661: Sync `openapi.yaml` with rollfuse/rollfuse's `apps/api/openapi/openapi.yaml`:
+  `VisitorAcquisition` gains the optional Google Ads click identifiers `gclid`,
+  `gbraid` and `wbraid` (rollfuse/rollfuse#447). Generated types only; no
+  runtime change.
+
 ## 0.8.10
 
 ### Patch Changes
