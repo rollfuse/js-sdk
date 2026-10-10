@@ -1875,6 +1875,10 @@
       "rules"
     ],
     "properties": {
+      "snapshot_version": {
+        "type": "integer",
+        "description": "2 for a snapshot that captured every targeting construct (operators, composed conditions, individual targets and prerequisites). Absent on a point recorded before then; such a point cannot be restored (409 history_point_not_restorable)."
+      },
       "enabled": {
         "type": "boolean"
       },
@@ -1885,6 +1889,18 @@
         "type": "array",
         "items": {
           "$ref": "#/components/schemas/Rule"
+        }
+      },
+      "individual_targets": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/IndividualTarget"
+        }
+      },
+      "prerequisites": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Prerequisite"
         }
       }
     }
@@ -1920,8 +1936,11 @@
         "type": "string",
         "enum": [
           "enabled",
-          "default_variation_id"
-        ]
+          "default_variation_id",
+          "individual_targets",
+          "prerequisites"
+        ],
+        "description": "For individual_targets and prerequisites, before/after carry the whole list on each side (IndividualTarget[] or Prerequisite[]); order within a list is not significant."
       },
       "before": {},
       "after": {}

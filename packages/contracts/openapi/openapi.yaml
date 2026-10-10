@@ -2998,8 +2998,10 @@ paths:
         "409":
           description: >-
             The configuration is owned by a scheduled or active Rollout,
-            or the environment requires approval for configuration
-            changes.
+            the environment requires approval for configuration changes,
+            or the point was recorded before snapshots captured every
+            targeting construct (history_point_not_restorable), so
+            restoring it could change or drop targeting.
           content:
             application/json:
               schema:
@@ -11661,6 +11663,16 @@ paths:
                       code: approval_not_pending
                       message: Approval request has already been decided.
                       request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+                payload_outdated:
+                  summary: >-
+                    A configuration change held before pending payloads
+                    carried individual targets and prerequisites. It stays
+                    pending; the requester must submit it again.
+                  value:
+                    error:
+                      code: approval_payload_outdated
+                      message: This change was submitted in an outdated format and cannot be applied without losing targeting. Ask the requester to submit it again.
+                      request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
 
   /v1/approval-requests/{approval_request_id}/reject:
     post:
@@ -15832,6 +15844,13 @@ components:
       type: object
       required: [enabled, default_variation_id, rules]
       properties:
+        snapshot_version:
+          type: integer
+          description: >-
+            2 for a snapshot that captured every targeting construct
+            (operators, composed conditions, individual targets and
+            prerequisites). Absent on a point recorded before then; such a
+            point cannot be restored (409 history_point_not_restorable).
         enabled:
           type: boolean
         default_variation_id:
@@ -15840,6 +15859,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Rule"
+        individual_targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/IndividualTarget"
+        prerequisites:
+          type: array
+          items:
+            $ref: "#/components/schemas/Prerequisite"
 
     HistoryPointList:
       type: object
@@ -15860,7 +15887,11 @@ components:
       properties:
         field:
           type: string
-          enum: [enabled, default_variation_id]
+          enum: [enabled, default_variation_id, individual_targets, prerequisites]
+          description: >-
+            For individual_targets and prerequisites, before/after carry
+            the whole list on each side (IndividualTarget[] or
+            Prerequisite[]); order within a list is not significant.
         before: {}
         after: {}
 
