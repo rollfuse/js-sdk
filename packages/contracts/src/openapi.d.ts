@@ -4189,9 +4189,13 @@ export interface components {
             created_at: string;
         };
         ConfigurationSnapshot: {
+            /** @description 2 for a snapshot that captured every targeting construct (operators, composed conditions, individual targets and prerequisites). Absent on a point recorded before then; such a point cannot be restored (409 history_point_not_restorable). */
+            snapshot_version?: number;
             enabled: boolean;
             default_variation_id: string;
             rules: components["schemas"]["Rule"][];
+            individual_targets?: components["schemas"]["IndividualTarget"][];
+            prerequisites?: components["schemas"]["Prerequisite"][];
         };
         HistoryPointList: {
             points: components["schemas"]["HistoryPoint"][];
@@ -4199,8 +4203,11 @@ export interface components {
             has_more: boolean;
         };
         FieldChange: {
-            /** @enum {string} */
-            field: "enabled" | "default_variation_id";
+            /**
+             * @description For individual_targets and prerequisites, before/after carry the whole list on each side (IndividualTarget[] or Prerequisite[]); order within a list is not significant.
+             * @enum {string}
+             */
+            field: "enabled" | "default_variation_id" | "individual_targets" | "prerequisites";
             before: unknown;
             after: unknown;
         };
@@ -8975,7 +8982,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The configuration is owned by a scheduled or active Rollout, or the environment requires approval for configuration changes. */
+            /** @description The configuration is owned by a scheduled or active Rollout, the environment requires approval for configuration changes, or the point was recorded before snapshots captured every targeting construct (history_point_not_restorable), so restoring it could change or drop targeting. */
             409: {
                 headers: {
                     [name: string]: unknown;
