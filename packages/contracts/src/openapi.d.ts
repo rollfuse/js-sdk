@@ -701,7 +701,7 @@ export interface paths {
         put?: never;
         /**
          * Restore a previous history point as a new change
-         * @description Requires a session for a Member holding environment-flag-configs:manage. Applies the point's configuration as a new change to its own Environment+FeatureFlag pair (not necessarily the pair named in the path, which is accepted only for a consistent, nested route shape), subject to the same validation and approval-policy rules as any other manual write, per flag-change-history's "A Previous Configuration Can Be Restored" requirement. Records a flag.restored audit event and a new HistoryPoint identifying the point that was restored. When the point's Environment requires approval, the restore is held instead (202) and those records are made once the request is approved.
+         * @description Requires a session for a Member holding environment-flag-configs:manage. Applies the point's configuration as a new change to its own Environment+FeatureFlag pair, subject to the same validation and approval-policy rules as any other manual write, per flag-change-history's "A Previous Configuration Can Be Restored" requirement. The environment_id and feature_flag_id in the path must be the point's own; a point of another Environment or feature flag answers the same 404 as an unknown point. Records a flag.restored audit event and a new HistoryPoint identifying the point that was restored. When the point's Environment requires approval, the restore is held instead (202) and those records are made once the request is approved. Every check a direct write runs (the allocation lock, validation of the restored targeting, the prerequisite cycle check and rollout ownership) runs before a restore is held, so a restore that would be refused is refused (400, 402 or 409) and no approval request is created.
          */
         post: operations["restoreFlagChangeHistoryPoint"];
         delete?: never;
@@ -761,7 +761,7 @@ export interface paths {
         put?: never;
         /**
          * Promote a flag's configuration from one environment to another
-         * @description Requires a session for a Member holding environment-flag-configs:manage. Copies the flag's live configuration from source_environment_id to target_environment_id in a single operation, subject to the target's approval policy, per project-environment-management's "Configuration Can Be Promoted Between Environments" requirement. The caller is expected to have already called the compare endpoint to show the difference before calling this to confirm it. Records a flag.promoted audit event and a new HistoryPoint in the target's history identifying the source environment. A source with no configuration, or a source/target that does not belong to the caller's Organization and the feature flag's Project, is refused as not found. When the target requires approval, the promotion is held instead (202) and the audit event and HistoryPoint are recorded once the request is approved.
+         * @description Requires a session for a Member holding environment-flag-configs:manage. Copies the flag's live configuration from source_environment_id to target_environment_id in a single operation, subject to the target's approval policy, per project-environment-management's "Configuration Can Be Promoted Between Environments" requirement. The caller is expected to have already called the compare endpoint to show the difference before calling this to confirm it. Records a flag.promoted audit event and a new HistoryPoint in the target's history identifying the source environment. A source with no configuration, or a source/target that does not belong to the caller's Organization and the feature flag's Project, is refused as not found. When the target requires approval, the promotion is held instead (202) and the audit event and HistoryPoint are recorded once the request is approved. Every check a direct write runs (the allocation lock, validation of the promoted targeting, the prerequisite cycle check and rollout ownership) runs before a promotion is held, so a promotion that would be refused is refused and no approval request is created.
          */
         post: operations["promoteFlagChangeHistoryConfiguration"];
         delete?: never;
@@ -1410,8 +1410,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List PolicyEvaluations recorded for a Guardrail
-         * @description Requires a session for a Member holding guardrails:manage. Ordered by evaluated_at ascending. A Guardrail requested through the wrong Rollout id, or whose Rollout belongs to another Organization, returns the same not-found response as a nonexistent Guardrail (non-disclosing), per the "Non-Disclosing Cross-Tenant PolicyEvaluation Listing" and "Operator-Facing Guardrail Endpoints Are Scoped To The Caller's Organization" requirements.
+         * List the newest PolicyEvaluations recorded for a Guardrail
+         * @description Requires a session for a Member holding guardrails:manage. Returns the Guardrail's newest PolicyEvaluations, newest evaluated_at first (id descending breaks ties). The list is always bounded: at most `limit` evaluations, 100 when `limit` is omitted. `has_more` is true when older evaluations exist beyond the returned ones; they are not reachable through this endpoint, which serves the latest state of a Guardrail rather than its full history. A Guardrail requested through the wrong Rollout id, or whose Rollout belongs to another Organization, returns the same not-found response as a nonexistent Guardrail (non-disclosing), per the "Non-Disclosing Cross-Tenant PolicyEvaluation Listing" and "Operator-Facing Guardrail Endpoints Are Scoped To The Caller's Organization" requirements.
          */
         get: operations["listPolicyEvaluations"];
         put?: never;
@@ -3742,8 +3742,14 @@ export interface components {
             /** @description Whether at least one further feature flag exists beyond this page. A response never presents a subset as if it were the whole. */
             has_more: boolean;
         };
-        /** @description A feature flag as returned by the project listing: every field of FeatureFlag plus its state in every environment of its project. */
+        /** @description A feature flag as returned by the project listing: every field of FeatureFlag plus its state in every environment of its project and when it last changed. */
         ListedFeatureFlag: components["schemas"]["FeatureFlag"] & {
+            /**
+             * Format: date-time
+             * @description The latest of the flag's own updated_at and the updated_at of each of its environment configurations, so changing the flag's targeting, serving state or default in any environment counts as a change to the flag. Equal to updated_at for a flag with no configuration. sort=updated orders the listing by this value.
+             * @example 2026-01-02T09:30:00Z
+             */
+            last_changed_at: string;
             /** @description The flag's state in each environment of its project, one entry per environment and only that project's environments, ordered like the environment listing (most recently created first). Empty when the project has no environment. Computed by the listing itself, so it is current as of the response. */
             environment_states: components["schemas"]["FeatureFlagEnvironmentState"][];
         };
@@ -4603,7 +4609,12 @@ export interface components {
             guardrails: components["schemas"]["Guardrail"][];
         };
         PolicyEvaluationList: {
+            /** @description The Guardrail's newest evaluations, newest evaluated_at first, at most `limit` of them. */
             policy_evaluations: components["schemas"]["PolicyEvaluation"][];
+            /** @description The limit actually applied: the requested one, or 100 when the request did not set one. */
+            limit: number;
+            /** @description True when the Guardrail has older evaluations than the ones returned, so the list is not its whole history. */
+            has_more: boolean;
         };
         CreateExperimentRequest: {
             environment_id: string;
@@ -7622,7 +7633,7 @@ export interface operations {
                 /** @description Rows to skip in the requested sort order. Defaults to 0. */
                 offset?: number;
                 /**
-                 * @description Order of the whole listing, applied before limit and offset. updated is most recently updated first, name is by name A to Z ignoring case, created is most recently created first. Every order breaks ties on the identifier. Absent or empty means updated; any other value is refused with feature_flag_validation_error.
+                 * @description Order of the whole listing, applied before limit and offset. updated is most recently changed first by last_changed_at, so a configuration change in any environment moves the flag up; name is by name A to Z ignoring case; created is most recently created first. Every order breaks ties on the identifier. Absent or empty means updated; any other value is refused with feature_flag_validation_error.
                  * @example name
                  */
                 sort?: "updated" | "name" | "created";
@@ -7693,7 +7704,8 @@ export interface operations {
                      *               "environment_id": "018f2f3a-7200-7000-9c3a-1f2b3c4d5e6f",
                      *               "state": "enabled"
                      *             }
-                     *           ]
+                     *           ],
+                     *           "last_changed_at": "2026-01-03T15:10:00Z"
                      *         }
                      *       ],
                      *       "limit": 50,
@@ -8429,7 +8441,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Configuration created or replaced (status "applied"), or held pending approval (status "pending_approval") because the owning Environment's approval policy requires it -- see PutEnvironmentFlagConfigResponse. */
+            /** @description Configuration created or replaced (status "applied"), or held pending approval (status "pending_approval") because the owning Environment's approval policy requires it -- see PutEnvironmentFlagConfigResponse. A change is only held after every check an applied write runs has passed (allocation lock, validation, prerequisite cycle check, rollout ownership); a change those checks refuse gets the same error it would get in an Environment without approval, and no approval request is created. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9060,7 +9072,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description History point was not found, or belongs to another Organization. */
+            /** @description History point was not found, belongs to another Organization, or belongs to an Environment or feature flag other than the ones in the path. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -9078,7 +9090,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The configuration is owned by a scheduled or active Rollout (environment_flag_config_owned_by_rollout), a change to this Environment and feature flag is already pending approval (environment_flag_config_approval_already_pending), or the point was recorded before snapshots captured every targeting construct (history_point_not_restorable), so restoring it could change or drop targeting. */
+            /** @description The configuration is owned by a scheduled, active or paused Rollout (environment_flag_config_owned_by_rollout), a change to this Environment and feature flag is already pending approval (environment_flag_config_approval_already_pending), or the point was recorded before snapshots captured every targeting construct (history_point_not_restorable), so restoring it could change or drop targeting. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -12262,7 +12274,13 @@ export interface operations {
     };
     listPolicyEvaluations: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description How many of the newest evaluations to return. Defaults to 100; a value outside 1..200, or one that is not an integer, is refused with 400 guardrail_validation_error.
+                 * @example 20
+                 */
+                limit?: number;
+            };
             header?: never;
             path: {
                 rollout_id: string;
@@ -12272,13 +12290,63 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description PolicyEvaluations found (possibly empty). */
+            /** @description The newest PolicyEvaluations, newest first (possibly empty), with the limit applied and whether older ones exist. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "policy_evaluations": [
+                     *         {
+                     *           "id": "018f2f3a-e200-7000-9c3a-1f2b3c4d5e6f",
+                     *           "guardrail_id": "018f2f3a-e000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "observed_value": 0.012,
+                     *           "threshold": 0.02,
+                     *           "breached": false,
+                     *           "config_version": 42,
+                     *           "action": "none",
+                     *           "correlation_id": "018f2f3a-e201-7000-9c3a-1f2b3c4d5e6f",
+                     *           "reason": "",
+                     *           "evaluated_at": "2026-01-01T12:05:00Z"
+                     *         },
+                     *         {
+                     *           "id": "018f2f3a-e100-7000-9c3a-1f2b3c4d5e6f",
+                     *           "guardrail_id": "018f2f3a-e000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "observed_value": 0.008,
+                     *           "threshold": 0.02,
+                     *           "breached": false,
+                     *           "config_version": 41,
+                     *           "action": "none",
+                     *           "correlation_id": "018f2f3a-e101-7000-9c3a-1f2b3c4d5e6f",
+                     *           "reason": "",
+                     *           "evaluated_at": "2026-01-01T12:04:00Z"
+                     *         }
+                     *       ],
+                     *       "limit": 2,
+                     *       "has_more": true
+                     *     }
+                     */
                     "application/json": components["schemas"]["PolicyEvaluationList"];
+                };
+            };
+            /** @description The limit is not an integer between 1 and 200. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "guardrail_validation_error",
+                     *         "message": "limit must be an integer between 1 and 200.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Missing or invalid session token. */
@@ -18159,6 +18227,24 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description A configuration change whose feature flag's entitlement allocation was locked (the Organization is over its plan's feature flag limit) after the change was held. Approving re-runs the same allocation-lock check a direct write runs; nothing is applied and the request stays pending. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "entitlement_allocation_locked",
+                     *         "message": "This feature flag is locked because the organization is over its feature flag limit for the current plan, so the change was not applied. The request stays pending.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description The session's Member does not hold roles:manage, or the request belongs to a different Organization. */
             403: {
                 headers: {
@@ -18195,7 +18281,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The requester attempted to approve their own request, or the request has already been decided. */
+            /** @description The requester attempted to approve their own request, the request has already been decided, the held configuration change can no longer be applied as recorded (approval_payload_outdated), or a Rollout took ownership of its configuration while it was pending (environment_flag_config_owned_by_rollout). In the last two cases nothing is applied and the request stays pending. */
             409: {
                 headers: {
                     [name: string]: unknown;

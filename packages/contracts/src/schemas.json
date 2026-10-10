@@ -317,7 +317,7 @@
     }
   },
   "ListedFeatureFlag": {
-    "description": "A feature flag as returned by the project listing: every field of FeatureFlag plus its state in every environment of its project.",
+    "description": "A feature flag as returned by the project listing: every field of FeatureFlag plus its state in every environment of its project and when it last changed.",
     "allOf": [
       {
         "$ref": "#/components/schemas/FeatureFlag"
@@ -325,9 +325,16 @@
       {
         "type": "object",
         "required": [
-          "environment_states"
+          "environment_states",
+          "last_changed_at"
         ],
         "properties": {
+          "last_changed_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The latest of the flag's own updated_at and the updated_at of each of its environment configurations, so changing the flag's targeting, serving state or default in any environment counts as a change to the flag. Equal to updated_at for a flag with no configuration. sort=updated orders the listing by this value.",
+            "example": "2026-01-02T09:30:00Z"
+          },
           "environment_states": {
             "type": "array",
             "description": "The flag's state in each environment of its project, one entry per environment and only that project's environments, ordered like the environment listing (most recently created first). Empty when the project has no environment. Computed by the listing itself, so it is current as of the response.",
@@ -3192,14 +3199,27 @@
   "PolicyEvaluationList": {
     "type": "object",
     "required": [
-      "policy_evaluations"
+      "policy_evaluations",
+      "limit",
+      "has_more"
     ],
     "properties": {
       "policy_evaluations": {
         "type": "array",
+        "description": "The Guardrail's newest evaluations, newest evaluated_at first, at most `limit` of them.",
         "items": {
           "$ref": "#/components/schemas/PolicyEvaluation"
         }
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "description": "The limit actually applied: the requested one, or 100 when the request did not set one."
+      },
+      "has_more": {
+        "type": "boolean",
+        "description": "True when the Guardrail has older evaluations than the ones returned, so the list is not its whole history."
       }
     }
   },
