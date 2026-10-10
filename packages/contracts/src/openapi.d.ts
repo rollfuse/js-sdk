@@ -427,7 +427,7 @@ export interface paths {
         head?: never;
         /**
          * Set an environment's approval policy for configuration changes
-         * @description Requires a session for a Member holding environments:manage. Sets whether the environment requires approval for a manual EnvironmentFlagConfig write, and whether the distinct kill-switch (disable) operation is exempt from that requirement — the position is a stated decision, never inferred, per add-flag-operations-essentials' "Disabling is subject to approval" scenario. A full approval request/grant flow is not yet implemented: while requires_approval is true, a non-exempt write is refused outright (409) rather than held pending.
+         * @description Requires a session for a Member holding environments:manage. Sets whether the environment requires approval for a manual EnvironmentFlagConfig write, and whether the distinct kill-switch (disable) operation is exempt from that requirement — the position is a stated decision, never inferred, per add-flag-operations-essentials' "Disabling is subject to approval" scenario. While requires_approval is true, a manual write, a restore and a promotion are held as a pending approval request rather than applied, and a non-exempt disable is refused outright (409).
          */
         patch: operations["setEnvironmentApprovalPolicy"];
         trace?: never;
@@ -461,9 +461,11 @@ export interface paths {
         };
         /**
          * List a project's feature flags
-         * @description Requires a session for a Member holding feature-flags:manage — it sits beside the create and get operations on this resource family and is gated no differently.
+         * @description Requires a session for a Member holding feature-flags:manage or its read-only counterpart feature-flags:read, like the get operation on this resource family.
          *
-         *     Returns the project's feature flags newest first, with the identifier as tiebreaker so pagination is stable. Each flag carries its variations inline, so a list view needs no follow-up request per row. A project that owns no flag yields an empty collection, not a not-found; a project that does not exist, or belongs to another Organization, yields a non-disclosing not-found.
+         *     Returns the project's feature flags in the requested sort order (most recently updated first by default), always with the identifier as tiebreaker so pagination is stable. Every filter and the sort order apply to the whole project before limit and offset, so a page is never a re-ordering or re-filtering of one page. Each flag carries its variations inline and its state in every environment of the project (environment_states), so a list view needs no follow-up request per row.
+         *
+         *     A project that owns no flag yields an empty collection, not a not-found; a project that does not exist, or belongs to another Organization, yields a non-disclosing not-found. A state_environment_id that does not exist, or belongs to another project or Organization, yields the same environment_not_found in every case.
          */
         get: operations["listFeatureFlags"];
         put?: never;
@@ -506,12 +508,12 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Rename and/or redescribe a feature flag
-         * @description Requires a session for a Member holding feature-flags:manage — the same gate the create, get and list operations on this resource family already apply.
+         * Rename, redescribe and/or retag a feature flag
+         * @description Requires a session for a Member holding feature-flags:manage, the same gate the create operation on this resource family applies.
          *
-         *     Updates the flag's name and description. Its key is immutable after creation: the key field is optional, and when supplied it MUST equal the flag's current key, or the request is refused with feature_flag_key_immutable rather than silently ignored.
+         *     Updates the flag's name and description and, when tags is present, replaces its tags (an absent tags field leaves them unchanged). Tags follow the same rules as creation. The change is recorded as a feature_flag.renamed audit event carrying the tags before and after it. The flag's key is immutable after creation: the key field is optional, and when supplied it MUST equal the flag's current key, or the request is refused with feature_flag_key_immutable rather than silently ignored.
          *
-         *     A feature flag whose owning project belongs to another Organization is rejected identically to an unknown feature flag id.
+         *     A feature flag that belongs to a different project than the path project, or whose owning project belongs to another Organization, is rejected identically to an unknown feature flag id.
          */
         patch: operations["renameFeatureFlag"];
         trace?: never;
@@ -699,7 +701,7 @@ export interface paths {
         put?: never;
         /**
          * Restore a previous history point as a new change
-         * @description Requires a session for a Member holding environment-flag-configs:manage. Applies the point's configuration as a new change to its own Environment+FeatureFlag pair (not necessarily the pair named in the path, which is accepted only for a consistent, nested route shape), subject to the same validation and approval-policy rules as any other manual write, per flag-change-history's "A Previous Configuration Can Be Restored" requirement. Records a flag.restored audit event and a new HistoryPoint identifying the point that was restored.
+         * @description Requires a session for a Member holding environment-flag-configs:manage. Applies the point's configuration as a new change to its own Environment+FeatureFlag pair (not necessarily the pair named in the path, which is accepted only for a consistent, nested route shape), subject to the same validation and approval-policy rules as any other manual write, per flag-change-history's "A Previous Configuration Can Be Restored" requirement. Records a flag.restored audit event and a new HistoryPoint identifying the point that was restored. When the point's Environment requires approval, the restore is held instead (202) and those records are made once the request is approved.
          */
         post: operations["restoreFlagChangeHistoryPoint"];
         delete?: never;
@@ -759,7 +761,7 @@ export interface paths {
         put?: never;
         /**
          * Promote a flag's configuration from one environment to another
-         * @description Requires a session for a Member holding environment-flag-configs:manage. Copies the flag's live configuration from source_environment_id to target_environment_id in a single operation, subject to the target's approval policy, per project-environment-management's "Configuration Can Be Promoted Between Environments" requirement. The caller is expected to have already called the compare endpoint to show the difference before calling this to confirm it. Records a flag.promoted audit event and a new HistoryPoint in the target's history identifying the source environment. A source with no configuration, or a source/target that does not belong to the caller's Organization and the feature flag's Project, is refused as not found.
+         * @description Requires a session for a Member holding environment-flag-configs:manage. Copies the flag's live configuration from source_environment_id to target_environment_id in a single operation, subject to the target's approval policy, per project-environment-management's "Configuration Can Be Promoted Between Environments" requirement. The caller is expected to have already called the compare endpoint to show the difference before calling this to confirm it. Records a flag.promoted audit event and a new HistoryPoint in the target's history identifying the source environment. A source with no configuration, or a source/target that does not belong to the caller's Organization and the feature flag's Project, is refused as not found. When the target requires approval, the promotion is held instead (202) and the audit event and HistoryPoint are recorded once the request is approved.
          */
         post: operations["promoteFlagChangeHistoryConfiguration"];
         delete?: never;
@@ -3732,7 +3734,7 @@ export interface components {
             offset: number;
         };
         ListFeatureFlagsResponse: {
-            feature_flags: components["schemas"]["FeatureFlag"][];
+            feature_flags: components["schemas"]["ListedFeatureFlag"][];
             /** @description The pagination limit actually applied (default when none supplied). */
             limit: number;
             /** @description The pagination offset actually applied. */
@@ -3740,6 +3742,20 @@ export interface components {
             /** @description Whether at least one further feature flag exists beyond this page. A response never presents a subset as if it were the whole. */
             has_more: boolean;
         };
+        /** @description A feature flag as returned by the project listing: every field of FeatureFlag plus its state in every environment of its project. */
+        ListedFeatureFlag: components["schemas"]["FeatureFlag"] & {
+            /** @description The flag's state in each environment of its project, one entry per environment and only that project's environments, ordered like the environment listing (most recently created first). Empty when the project has no environment. Computed by the listing itself, so it is current as of the response. */
+            environment_states: components["schemas"]["FeatureFlagEnvironmentState"][];
+        };
+        FeatureFlagEnvironmentState: {
+            environment_id: string;
+            state: components["schemas"]["FeatureFlagEnvironmentStateValue"];
+        };
+        /**
+         * @description enabled and disabled mean the environment has a configuration for the flag with serving turned on or off; unconfigured means it has none.
+         * @enum {string}
+         */
+        FeatureFlagEnvironmentStateValue: "enabled" | "disabled" | "unconfigured";
         ListEnvironmentsResponse: {
             environments: components["schemas"]["Environment"][];
             /** @description The pagination limit actually applied (default when none supplied). */
@@ -4009,7 +4025,7 @@ export interface components {
             description?: string;
             /** @description Optional. A feature flag's key is immutable after creation: if supplied, it MUST equal the flag's current key, or the request is refused with feature_flag_key_immutable. Omit this field entirely on a routine rename. */
             key?: string;
-            /** @description Optional. When present, replaces the flag's tags wholesale. Omit this field entirely to leave existing tags untouched. */
+            /** @description Optional. When present, replaces the flag's tags wholesale (an empty array removes them all), validated with the same rules as creation: at most 20 tags, each at most 40 bytes of UTF-8 after surrounding whitespace is trimmed, blank tags dropped and duplicates collapsed. Omit this field entirely to leave existing tags untouched. The feature_flag.renamed audit event records the tags before and after the change. */
             tags?: string[];
         };
         Variation: {
@@ -4172,6 +4188,8 @@ export interface components {
             type: "member" | "staff" | "system" | "gateway";
             /** @description Present only for a member or staff actor. */
             id?: string;
+            /** @description The acting Member's display name, resolved within the point's own Organization, so a reader of the history can see who acted without the permission to list Members. Present only for a member actor whose Member still exists in that Organization with a non-empty name; absent for a removed or erased Member (the id is still returned) and for every other actor type. */
+            display_name?: string;
         };
         HistoryPoint: {
             id: string;
@@ -4196,6 +4214,13 @@ export interface components {
             rules: components["schemas"]["Rule"][];
             individual_targets?: components["schemas"]["IndividualTarget"][];
             prerequisites?: components["schemas"]["Prerequisite"][];
+        };
+        /** @description A restore or promotion the target Environment's approval policy held pending approval, the same "pending_approval" shape the config PUT returns. The live configuration is unchanged until the named approval request is approved; approving it applies the change and records it as a restore or promotion in the history. */
+        PendingConfigurationChange: {
+            /** @enum {string} */
+            status: "pending_approval";
+            /** @description The id of the created approval request. */
+            pending_approval_request_id: string;
         };
         HistoryPointList: {
             points: components["schemas"]["HistoryPoint"][];
@@ -7594,8 +7619,23 @@ export interface operations {
             query?: {
                 /** @description Page size. Defaults to 50 when absent, zero, or above the maximum of 200. */
                 limit?: number;
-                /** @description Rows to skip in the newest-first ordering. Defaults to 0. */
+                /** @description Rows to skip in the requested sort order. Defaults to 0. */
                 offset?: number;
+                /**
+                 * @description Order of the whole listing, applied before limit and offset. updated is most recently updated first, name is by name A to Z ignoring case, created is most recently created first. Every order breaks ties on the identifier. Absent or empty means updated; any other value is refused with feature_flag_validation_error.
+                 * @example name
+                 */
+                sort?: "updated" | "name" | "created";
+                /**
+                 * @description Restrict the result to flags in the given state in this environment, applied before limit and offset. MUST be supplied together with state; one without the other is refused with feature_flag_validation_error. The environment MUST belong to the path project; one that does not exist or belongs to another project or Organization is refused with environment_not_found.
+                 * @example 018f2f3a-7100-7000-9c3a-1f2b3c4d5e6f
+                 */
+                state_environment_id?: string;
+                /**
+                 * @description The state to filter by in state_environment_id. enabled and disabled match flags configured there with serving turned on or off; unconfigured matches flags with no configuration there. MUST be supplied together with state_environment_id.
+                 * @example disabled
+                 */
+                state?: components["schemas"]["FeatureFlagEnvironmentStateValue"];
                 /** @description Include archived feature flags. Defaults to false, so the listing returns only the active set. This only changes which rows of the caller's own already-authorized project are returned, never which project can be queried. */
                 include_archived?: boolean;
                 /** @description Case-insensitive substring match against the flag's name or key. Absent or empty means unfiltered. */
@@ -7638,10 +7678,22 @@ export interface operations {
                      *               "value": false
                      *             }
                      *           ],
-                     *           "tags": [],
+                     *           "tags": [
+                     *             "payments"
+                     *           ],
                      *           "created_at": "2026-01-01T12:00:00Z",
-                     *           "updated_at": "2026-01-01T12:00:00Z",
-                     *           "archived_at": null
+                     *           "updated_at": "2026-01-02T09:30:00Z",
+                     *           "archived_at": null,
+                     *           "environment_states": [
+                     *             {
+                     *               "environment_id": "018f2f3a-7100-7000-9c3a-1f2b3c4d5e6f",
+                     *               "state": "unconfigured"
+                     *             },
+                     *             {
+                     *               "environment_id": "018f2f3a-7200-7000-9c3a-1f2b3c4d5e6f",
+                     *               "state": "enabled"
+                     *             }
+                     *           ]
                      *         }
                      *       ],
                      *       "limit": 50,
@@ -7652,21 +7704,12 @@ export interface operations {
                     "application/json": components["schemas"]["ListFeatureFlagsResponse"];
                 };
             };
-            /** @description Invalid limit, offset or include_archived. */
+            /** @description Invalid limit, offset, include_archived, sort or state, or only one of state_environment_id and state supplied. */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "error": {
-                     *         "code": "feature_flag_validation_error",
-                     *         "message": "limit must be a non-negative integer.",
-                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
-                     *       }
-                     *     }
-                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -7679,7 +7722,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The session's Member does not hold feature-flags:manage. */
+            /** @description The session's Member holds neither feature-flags:manage nor feature-flags:read. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -7688,21 +7731,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The project was not found, or belongs to another Organization. */
+            /** @description The project was not found or belongs to another Organization (feature_flag_not_found), or state_environment_id names an environment that was not found or is not the path project's own (environment_not_found, identical for another project, for another Organization and for an unknown id). */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "error": {
-                     *         "code": "project_not_found",
-                     *         "message": "Project was not found.",
-                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
-                     *       }
-                     *     }
-                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -8012,6 +8046,16 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "name": "New Checkout Flow",
+                 *       "description": "Rolls out the redesigned checkout flow.",
+                 *       "tags": [
+                 *         "payments",
+                 *         "beta"
+                 *       ]
+                 *     }
+                 */
                 "application/json": components["schemas"]["RenameFeatureFlagRequest"];
             };
         };
@@ -8022,24 +8066,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "id": "018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "project_id": "018f2f3a-7000-7000-9c3a-1f2b3c4d5e6f",
+                     *       "name": "New Checkout Flow",
+                     *       "description": "Rolls out the redesigned checkout flow.",
+                     *       "key": "new-checkout-flow",
+                     *       "variations": [
+                     *         {
+                     *           "id": "018f2f3a-9100-7000-9c3a-1f2b3c4d5e6f",
+                     *           "key": "on",
+                     *           "value": true
+                     *         },
+                     *         {
+                     *           "id": "018f2f3a-9200-7000-9c3a-1f2b3c4d5e6f",
+                     *           "key": "off",
+                     *           "value": false
+                     *         }
+                     *       ],
+                     *       "tags": [
+                     *         "payments",
+                     *         "beta"
+                     *       ],
+                     *       "created_at": "2026-01-01T12:00:00Z",
+                     *       "updated_at": "2026-01-02T09:30:00Z",
+                     *       "archived_at": null
+                     *     }
+                     */
                     "application/json": components["schemas"]["FeatureFlag"];
                 };
             };
-            /** @description The request body failed validation, or attempted to change the flag's immutable key. */
+            /** @description The request body failed validation (including a tag longer than 40 bytes or more than 20 tags), or attempted to change the flag's immutable key. */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "error": {
-                     *         "code": "feature_flag_key_immutable",
-                     *         "message": "A feature flag's key cannot be changed after creation.",
-                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
-                     *       }
-                     *     }
-                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -8763,9 +8826,26 @@ export interface operations {
                      *           },
                      *           "actor": {
                      *             "type": "member",
-                     *             "id": "018f2f3a-1100-7000-9c3a-1f2b3c4d5e6f"
+                     *             "id": "018f2f3a-1100-7000-9c3a-1f2b3c4d5e6f",
+                     *             "display_name": "Ana Souza"
                      *           },
                      *           "created_at": "2026-01-01T12:00:00Z"
+                     *         },
+                     *         {
+                     *           "id": "018f2f3a-af00-7000-9c3a-1f2b3c4d5e6f",
+                     *           "environment_id": "018f2f3a-8000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "feature_flag_id": "018f2f3a-9000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "environment_flag_config_id": "018f2f3a-a000-7000-9c3a-1f2b3c4d5e6f",
+                     *           "configuration": {
+                     *             "enabled": false,
+                     *             "default_variation_id": "018f2f3a-9200-7000-9c3a-1f2b3c4d5e6f",
+                     *             "rules": []
+                     *           },
+                     *           "actor": {
+                     *             "type": "member",
+                     *             "id": "018f2f3a-1200-7000-9c3a-1f2b3c4d5e6f"
+                     *           },
+                     *           "created_at": "2025-12-31T09:30:00Z"
                      *         }
                      *       ],
                      *       "has_more": false
@@ -8844,7 +8924,8 @@ export interface operations {
                      *       },
                      *       "actor": {
                      *         "type": "member",
-                     *         "id": "018f2f3a-1100-7000-9c3a-1f2b3c4d5e6f"
+                     *         "id": "018f2f3a-1100-7000-9c3a-1f2b3c4d5e6f",
+                     *         "display_name": "Ana Souza"
                      *       },
                      *       "created_at": "2026-01-01T12:00:00Z"
                      *     }
@@ -8919,6 +9000,21 @@ export interface operations {
                     "application/json": components["schemas"]["ConfigurationSnapshot"];
                 };
             };
+            /** @description The Environment requires approval for configuration changes, so the restore was held pending approval rather than applied. The live configuration is unchanged. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "pending_approval",
+                     *       "pending_approval_request_id": "018f2f3a-c100-7000-9c3a-1f2b3c4d5e6f"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PendingConfigurationChange"];
+                };
+            };
             /** @description The restored configuration is no longer valid: it references a variation or segment that no longer exists, or another validation error environmentflagconfig's own write path would reject. */
             400: {
                 headers: {
@@ -8982,21 +9078,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The configuration is owned by a scheduled or active Rollout, the environment requires approval for configuration changes, or the point was recorded before snapshots captured every targeting construct (history_point_not_restorable), so restoring it could change or drop targeting. */
+            /** @description The configuration is owned by a scheduled or active Rollout (environment_flag_config_owned_by_rollout), a change to this Environment and feature flag is already pending approval (environment_flag_config_approval_already_pending), or the point was recorded before snapshots captured every targeting construct (history_point_not_restorable), so restoring it could change or drop targeting. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "error": {
-                     *         "code": "environment_flag_config_approval_required",
-                     *         "message": "environment flag config: this environment requires approval for configuration changes",
-                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
-                     *       }
-                     *     }
-                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -9189,7 +9276,29 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "enabled": true,
+                     *       "default_variation_id": "018f2f3a-9200-7000-9c3a-1f2b3c4d5e6f",
+                     *       "rules": []
+                     *     }
+                     */
                     "application/json": components["schemas"]["ConfigurationSnapshot"];
+                };
+            };
+            /** @description The target Environment requires approval for configuration changes, so the promotion was held pending approval rather than applied. The target's live configuration is unchanged. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "pending_approval",
+                     *       "pending_approval_request_id": "018f2f3a-c100-7000-9c3a-1f2b3c4d5e6f"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PendingConfigurationChange"];
                 };
             };
             /** @description Missing query parameters, or the promoted configuration is no longer valid for the target (a referenced variation or segment absent from it). */
@@ -9237,12 +9346,21 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The configuration is owned by a scheduled or active Rollout, or the target environment requires approval for configuration changes. */
+            /** @description The configuration is owned by a scheduled or active Rollout (environment_flag_config_owned_by_rollout), or a change to the target Environment and feature flag is already pending approval (environment_flag_config_approval_already_pending). */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "environment_flag_config_approval_already_pending",
+                     *         "message": "environment flag config: a change to this environment and feature flag is already pending approval",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };

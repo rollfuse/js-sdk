@@ -299,7 +299,7 @@
       "feature_flags": {
         "type": "array",
         "items": {
-          "$ref": "#/components/schemas/FeatureFlag"
+          "$ref": "#/components/schemas/ListedFeatureFlag"
         }
       },
       "limit": {
@@ -315,6 +315,53 @@
         "description": "Whether at least one further feature flag exists beyond this page. A response never presents a subset as if it were the whole."
       }
     }
+  },
+  "ListedFeatureFlag": {
+    "description": "A feature flag as returned by the project listing: every field of FeatureFlag plus its state in every environment of its project.",
+    "allOf": [
+      {
+        "$ref": "#/components/schemas/FeatureFlag"
+      },
+      {
+        "type": "object",
+        "required": [
+          "environment_states"
+        ],
+        "properties": {
+          "environment_states": {
+            "type": "array",
+            "description": "The flag's state in each environment of its project, one entry per environment and only that project's environments, ordered like the environment listing (most recently created first). Empty when the project has no environment. Computed by the listing itself, so it is current as of the response.",
+            "items": {
+              "$ref": "#/components/schemas/FeatureFlagEnvironmentState"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "FeatureFlagEnvironmentState": {
+    "type": "object",
+    "required": [
+      "environment_id",
+      "state"
+    ],
+    "properties": {
+      "environment_id": {
+        "type": "string"
+      },
+      "state": {
+        "$ref": "#/components/schemas/FeatureFlagEnvironmentStateValue"
+      }
+    }
+  },
+  "FeatureFlagEnvironmentStateValue": {
+    "type": "string",
+    "enum": [
+      "enabled",
+      "disabled",
+      "unconfigured"
+    ],
+    "description": "enabled and disabled mean the environment has a configuration for the flag with serving turned on or off; unconfigured means it has none."
   },
   "ListEnvironmentsResponse": {
     "type": "object",
@@ -1255,7 +1302,7 @@
           "maxLength": 40
         },
         "maxItems": 20,
-        "description": "Optional. When present, replaces the flag's tags wholesale. Omit this field entirely to leave existing tags untouched."
+        "description": "Optional. When present, replaces the flag's tags wholesale (an empty array removes them all), validated with the same rules as creation: at most 20 tags, each at most 40 bytes of UTF-8 after surrounding whitespace is trimmed, blank tags dropped and duplicates collapsed. Omit this field entirely to leave existing tags untouched. The feature_flag.renamed audit event records the tags before and after the change."
       }
     }
   },
@@ -1820,6 +1867,10 @@
       "id": {
         "type": "string",
         "description": "Present only for a member or staff actor."
+      },
+      "display_name": {
+        "type": "string",
+        "description": "The acting Member's display name, resolved within the point's own Organization, so a reader of the history can see who acted without the permission to list Members. Present only for a member actor whose Member still exists in that Organization with a non-empty name; absent for a removed or erased Member (the id is still returned) and for every other actor type."
       }
     }
   },
@@ -1902,6 +1953,26 @@
         "items": {
           "$ref": "#/components/schemas/Prerequisite"
         }
+      }
+    }
+  },
+  "PendingConfigurationChange": {
+    "type": "object",
+    "description": "A restore or promotion the target Environment's approval policy held pending approval, the same \"pending_approval\" shape the config PUT returns. The live configuration is unchanged until the named approval request is approved; approving it applies the change and records it as a restore or promotion in the history.",
+    "required": [
+      "status",
+      "pending_approval_request_id"
+    ],
+    "properties": {
+      "status": {
+        "type": "string",
+        "enum": [
+          "pending_approval"
+        ]
+      },
+      "pending_approval_request_id": {
+        "type": "string",
+        "description": "The id of the created approval request."
       }
     }
   },
