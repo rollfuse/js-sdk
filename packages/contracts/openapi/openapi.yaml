@@ -9996,7 +9996,7 @@ paths:
               example:
                 error:
                   code: identity_provider_auth_required
-                  message: Authentication is required to configure the identity provider.
+                  message: A valid bootstrap credential or an authenticated session with organizations:manage is required.
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
         "402":
           description: >-
@@ -10009,7 +10009,7 @@ paths:
               example:
                 error:
                   code: plan_upgrade_required
-                  message: Single sign-on requires the Enterprise plan.
+                  message: SSO for members beyond the founding admin, and identity provider configuration through a session, are on the Enterprise plan. Upgrade at /billing/plans, then try again.
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
         "404":
           description: The organization was not found.
@@ -10021,6 +10021,20 @@ paths:
                 error:
                   code: organization_not_found
                   message: Organization was not found.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+        "503":
+          description: >-
+            The organization's plan could not be read, so nothing was changed.
+            Reported with code `plan_check_unavailable`; retry shortly. This
+            is not a plan refusal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: plan_check_unavailable
+                  message: Your organization's plan could not be checked right now. Nothing was changed. Try again in a moment.
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
 
   /v1/organizations/{organization_id}/login:
@@ -10329,7 +10343,11 @@ paths:
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
         "402":
           description: >-
-            The organization's plan does not include single sign-on, so the login is refused and no Session is issued. Reported with code
+            The organization's plan does not include single sign-on for a
+            further Member: the identity has no Member yet and the
+            organization already has one, so just-in-time provisioning is
+            refused and no Member or Session is created. The founding Member
+            and existing Members are unaffected. Reported with code
             `plan_upgrade_required`; upgrade to the Enterprise plan to proceed.
           content:
             application/json:
@@ -10338,7 +10356,7 @@ paths:
               example:
                 error:
                   code: plan_upgrade_required
-                  message: Single sign-on requires the Enterprise plan.
+                  message: SSO for members beyond the founding admin, and identity provider configuration through a session, are on the Enterprise plan. Upgrade at /billing/plans, then try again.
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
         "409":
           description: >-
@@ -10356,6 +10374,20 @@ paths:
                 error:
                   code: seat_limit_exceeded
                   message: This organization has no available seats. Free up a seat or upgrade the plan, then try again.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+        "503":
+          description: >-
+            The organization's plan could not be read, so nothing was changed.
+            Reported with code `plan_check_unavailable`; retry shortly. This
+            is not a plan refusal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: plan_check_unavailable
+                  message: Your organization's plan could not be checked right now. Nothing was changed. Try again in a moment.
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
 
   /v1/auth/magic-link:
@@ -12268,7 +12300,7 @@ paths:
               example:
                 error:
                   code: plan_upgrade_required
-                  message: SCIM provisioning requires the Enterprise plan.
+                  message: SCIM provisioning is on the Enterprise plan. Choose the Enterprise plan at /billing/plans to issue a SCIM token.
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
         "403":
           description: The session's Member does not hold roles:manage.
@@ -12282,6 +12314,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: >-
+            The organization's plan could not be read, so nothing was changed.
+            Reported with code `plan_check_unavailable`; retry shortly. This
+            is not a plan refusal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: plan_check_unavailable
+                  message: The organization's plan could not be checked. Retry in a moment.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
 
   /v1/organizations/{organization_id}/scim-tokens/{scim_token_id}:
     delete:
@@ -12371,7 +12417,9 @@ paths:
         "403":
           description: >-
             The organization's plan does not include SCIM provisioning
-            (Enterprise plan refusal). Nothing is read or changed.
+            (Enterprise plan refusal). Nothing is created. The detail reads
+            "SCIM provisioning requires the Enterprise plan. Move this
+            organization to the Enterprise plan, then retry."
           content:
             application/scim+json:
               schema:
@@ -12383,6 +12431,16 @@ paths:
             deactivated) or the plan is upgraded. Re-provisioning an
             externalId that already has a Member is unaffected: it reuses
             that Member and consumes no additional seat.
+          content:
+            application/scim+json:
+              schema:
+                $ref: "#/components/schemas/ScimError"
+        "503":
+          description: >-
+            The organization's plan could not be read, so nothing was
+            created. The detail reads "The organization's plan could not be
+            checked, so the request was not applied. Retry in a moment."
+            Retry shortly; this is not a plan refusal.
           content:
             application/scim+json:
               schema:
@@ -12416,14 +12474,6 @@ paths:
             application/scim+json:
               schema:
                 $ref: "#/components/schemas/ScimError"
-        "403":
-          description: >-
-            The organization's plan does not include SCIM provisioning
-            (Enterprise plan refusal). Nothing is read or changed.
-          content:
-            application/scim+json:
-              schema:
-                $ref: "#/components/schemas/ScimError"
 
   /scim/v2/Users/{user_id}:
     get:
@@ -12451,14 +12501,6 @@ paths:
                 $ref: "#/components/schemas/ScimUser"
         "401":
           description: Missing or invalid ScimToken.
-          content:
-            application/scim+json:
-              schema:
-                $ref: "#/components/schemas/ScimError"
-        "403":
-          description: >-
-            The organization's plan does not include SCIM provisioning
-            (Enterprise plan refusal). Nothing is read or changed.
           content:
             application/scim+json:
               schema:

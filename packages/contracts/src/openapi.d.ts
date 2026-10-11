@@ -16334,7 +16334,7 @@ export interface operations {
                      * @example {
                      *       "error": {
                      *         "code": "identity_provider_auth_required",
-                     *         "message": "Authentication is required to configure the identity provider.",
+                     *         "message": "A valid bootstrap credential or an authenticated session with organizations:manage is required.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -16352,7 +16352,7 @@ export interface operations {
                      * @example {
                      *       "error": {
                      *         "code": "plan_upgrade_required",
-                     *         "message": "Single sign-on requires the Enterprise plan.",
+                     *         "message": "SSO for members beyond the founding admin, and identity provider configuration through a session, are on the Enterprise plan. Upgrade at /billing/plans, then try again.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -16371,6 +16371,24 @@ export interface operations {
                      *       "error": {
                      *         "code": "organization_not_found",
                      *         "message": "Organization was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization's plan could not be read, so nothing was changed. Reported with code `plan_check_unavailable`; retry shortly. This is not a plan refusal. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "plan_check_unavailable",
+                     *         "message": "Your organization's plan could not be checked right now. Nothing was changed. Try again in a moment.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -16626,7 +16644,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The organization's plan does not include single sign-on, so the login is refused and no Session is issued. Reported with code `plan_upgrade_required`; upgrade to the Enterprise plan to proceed. */
+            /** @description The organization's plan does not include single sign-on for a further Member: the identity has no Member yet and the organization already has one, so just-in-time provisioning is refused and no Member or Session is created. The founding Member and existing Members are unaffected. Reported with code `plan_upgrade_required`; upgrade to the Enterprise plan to proceed. */
             402: {
                 headers: {
                     [name: string]: unknown;
@@ -16636,7 +16654,7 @@ export interface operations {
                      * @example {
                      *       "error": {
                      *         "code": "plan_upgrade_required",
-                     *         "message": "Single sign-on requires the Enterprise plan.",
+                     *         "message": "SSO for members beyond the founding admin, and identity provider configuration through a session, are on the Enterprise plan. Upgrade at /billing/plans, then try again.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -16655,6 +16673,24 @@ export interface operations {
                      *       "error": {
                      *         "code": "seat_limit_exceeded",
                      *         "message": "This organization has no available seats. Free up a seat or upgrade the plan, then try again.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization's plan could not be read, so nothing was changed. Reported with code `plan_check_unavailable`; retry shortly. This is not a plan refusal. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "plan_check_unavailable",
+                     *         "message": "Your organization's plan could not be checked right now. Nothing was changed. Try again in a moment.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -18575,7 +18611,7 @@ export interface operations {
                      * @example {
                      *       "error": {
                      *         "code": "plan_upgrade_required",
-                     *         "message": "SCIM provisioning requires the Enterprise plan.",
+                     *         "message": "SCIM provisioning is on the Enterprise plan. Choose the Enterprise plan at /billing/plans to issue a SCIM token.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -18598,6 +18634,24 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization's plan could not be read, so nothing was changed. Reported with code `plan_check_unavailable`; retry shortly. This is not a plan refusal. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "plan_check_unavailable",
+                     *         "message": "The organization's plan could not be checked. Retry in a moment.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -18692,15 +18746,6 @@ export interface operations {
                     "application/scim+json": components["schemas"]["ScimError"];
                 };
             };
-            /** @description The organization's plan does not include SCIM provisioning (Enterprise plan refusal). Nothing is read or changed. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/scim+json": components["schemas"]["ScimError"];
-                };
-            };
         };
     };
     provisionScimUser: {
@@ -18741,7 +18786,7 @@ export interface operations {
                     "application/scim+json": components["schemas"]["ScimError"];
                 };
             };
-            /** @description The organization's plan does not include SCIM provisioning (Enterprise plan refusal). Nothing is read or changed. */
+            /** @description The organization's plan does not include SCIM provisioning (Enterprise plan refusal). Nothing is created. The detail reads "SCIM provisioning requires the Enterprise plan. Move this organization to the Enterprise plan, then retry." */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -18752,6 +18797,15 @@ export interface operations {
             };
             /** @description The organization has no available seat, so no Member was created. Retrying succeeds once a seat is freed (a Member is deactivated) or the plan is upgraded. Re-provisioning an externalId that already has a Member is unaffected: it reuses that Member and consumes no additional seat. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": components["schemas"]["ScimError"];
+                };
+            };
+            /** @description The organization's plan could not be read, so nothing was created. The detail reads "The organization's plan could not be checked, so the request was not applied. Retry in a moment." Retry shortly; this is not a plan refusal. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -18783,15 +18837,6 @@ export interface operations {
             };
             /** @description Missing or invalid ScimToken. */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/scim+json": components["schemas"]["ScimError"];
-                };
-            };
-            /** @description The organization's plan does not include SCIM provisioning (Enterprise plan refusal). Nothing is read or changed. */
-            403: {
                 headers: {
                     [name: string]: unknown;
                 };
