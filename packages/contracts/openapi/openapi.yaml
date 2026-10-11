@@ -2172,8 +2172,11 @@ paths:
         dependents refusal above.
 
 
-        A feature flag whose owning project belongs to another Organization
-        is rejected identically to an unknown feature flag id.
+        The feature flag must belong to the project named in the path. A
+        feature flag of another project, in the caller's Organization or
+        another, is rejected identically to an unknown feature flag id,
+        before the dependents and recent-evaluation checks, and nothing is
+        deleted.
       tags: [feature-flags]
       security:
         - sessionAuth: []
@@ -2215,8 +2218,10 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: >-
-            Feature flag was not found (or belongs to a different
-            project or Organization).
+            Feature flag was not found, or it does not belong to the
+            project in the path (a sibling project of the same
+            Organization or a project of another Organization). Every case
+            gets this identical response and nothing is deleted.
           content:
             application/json:
               schema:
@@ -2270,8 +2275,14 @@ paths:
         flag can never reuse it.
 
 
-        A feature flag whose owning project belongs to another Organization
-        is rejected identically to an unknown feature flag id.
+        Archiving is refused with feature_flag_has_dependents, naming them,
+        while another feature flag declares this one as a prerequisite.
+
+
+        The feature flag must belong to the project named in the path. A
+        feature flag of another project, in the caller's Organization or
+        another, is rejected identically to an unknown feature flag id,
+        before the prerequisite check, and nothing changes.
       tags: [feature-flags]
       security:
         - sessionAuth: []
@@ -2303,8 +2314,10 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: >-
-            Feature flag was not found (or belongs to another
-            Organization).
+            Feature flag was not found, or it does not belong to the
+            project in the path (a sibling project of the same
+            Organization or a project of another Organization). Every case
+            gets this identical response and the flag stays active.
           content:
             application/json:
               schema:
@@ -2315,16 +2328,28 @@ paths:
                   message: Feature flag was not found.
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
         "409":
-          description: The feature flag is already archived.
+          description: >-
+            Either the feature flag is already archived
+            (feature_flag_already_archived), or another feature flag
+            declares it as a prerequisite (feature_flag_has_dependents,
+            naming every one of them).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
-              example:
-                error:
-                  code: feature_flag_already_archived
-                  message: This feature flag is already archived.
-                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+              examples:
+                already_archived:
+                  value:
+                    error:
+                      code: feature_flag_already_archived
+                      message: This feature flag is already archived.
+                      request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+                has_dependents:
+                  value:
+                    error:
+                      code: feature_flag_has_dependents
+                      message: "feature flag: cannot be archived while referenced by feature_flag_prerequisite flag_downstream"
+                      request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
 
   /v1/projects/{project_id}/feature-flags/{feature_flag_id}/unarchive:
     post:
@@ -2346,6 +2371,12 @@ paths:
         Unarchiving does not resume targeting: the environment flag
         configurations archiving disabled stay disabled until an operator
         re-enables each one explicitly.
+
+
+        The feature flag must belong to the project named in the path. A
+        feature flag of another project, in the caller's Organization or
+        another, is rejected identically to an unknown feature flag id, and
+        nothing changes.
       tags: [feature-flags]
       security:
         - sessionAuth: []
@@ -2390,8 +2421,10 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: >-
-            Feature flag was not found (or belongs to another
-            Organization).
+            Feature flag was not found, or it does not belong to the
+            project in the path (a sibling project of the same
+            Organization or a project of another Organization). Every case
+            gets this identical response and the flag stays archived.
           content:
             application/json:
               schema:
@@ -8653,6 +8686,12 @@ paths:
         Requires a session for a Member holding metrics:manage. Updates
         the definition's name and description. Its key is immutable after
         creation.
+
+
+        The metric definition must belong to the project named in the
+        path. A metric definition of another project, in the caller's
+        Organization or another, is rejected identically to an unknown
+        metric definition id, and nothing changes.
       tags: [metric-definition-ingestion]
       security:
         - sessionAuth: []
@@ -8699,11 +8738,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: Metric definition was not found.
+          description: >-
+            Metric definition was not found, or it does not belong to the
+            project in the path (a sibling project of the same
+            Organization or a project of another Organization). Every case
+            gets this identical response and the name is unchanged.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: metric_definition_not_found
+                  message: Metric definition or environment was not found.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
     delete:
       operationId: deleteMetricDefinition
       summary: Delete a metric definition
@@ -8713,6 +8761,13 @@ paths:
         reversible option. Refused with
         metric_definition_has_dependents, naming every one, when a
         Guardrail or Connector still references the definition.
+
+
+        The metric definition must belong to the project named in the
+        path. A metric definition of another project, in the caller's
+        Organization or another, is rejected identically to an unknown
+        metric definition id, before the dependents check, and nothing is
+        deleted.
       tags: [metric-definition-ingestion]
       security:
         - sessionAuth: []
@@ -8743,11 +8798,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: Metric definition was not found.
+          description: >-
+            Metric definition was not found, or it does not belong to the
+            project in the path (a sibling project of the same
+            Organization or a project of another Organization). Every case
+            gets this identical response and nothing is deleted.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: metric_definition_not_found
+                  message: Metric definition or environment was not found.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
         "409":
           description: >-
             The metric definition is still referenced by at least one
@@ -8771,6 +8835,12 @@ paths:
         stops the definition being offered for new use, but every
         existing Guardrail, Connector or Observation referencing it
         continues to resolve. Nothing is deleted.
+
+
+        The metric definition must belong to the project named in the
+        path. A metric definition of another project, in the caller's
+        Organization or another, is rejected identically to an unknown
+        metric definition id, and nothing changes.
       tags: [metric-definition-ingestion]
       security:
         - sessionAuth: []
@@ -8801,11 +8871,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: Metric definition was not found.
+          description: >-
+            Metric definition was not found, or it does not belong to the
+            project in the path (a sibling project of the same
+            Organization or a project of another Organization). Every case
+            gets this identical response and the definition stays active.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: metric_definition_not_found
+                  message: Metric definition or environment was not found.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
         "409":
           description: The metric definition is already archived.
           content:
@@ -9906,6 +9985,32 @@ paths:
                   code: member_validation_error
                   message: "member: issuer is required"
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+        "401":
+          description: >-
+            The request does not carry the credentials this endpoint
+            requires. Reported with code `identity_provider_auth_required`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: identity_provider_auth_required
+                  message: Authentication is required to configure the identity provider.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+        "402":
+          description: >-
+            The organization's plan does not include single sign-on. Reported with code
+            `plan_upgrade_required`; upgrade to the Enterprise plan to proceed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: plan_upgrade_required
+                  message: Single sign-on requires the Enterprise plan.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
         "404":
           description: The organization was not found.
           content:
@@ -10221,6 +10326,19 @@ paths:
                 error:
                   code: callback_invalid
                   message: The login callback is invalid or has expired.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
+        "402":
+          description: >-
+            The organization's plan does not include single sign-on, so the login is refused and no Session is issued. Reported with code
+            `plan_upgrade_required`; upgrade to the Enterprise plan to proceed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: plan_upgrade_required
+                  message: Single sign-on requires the Enterprise plan.
                   request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
         "409":
           description: >-
@@ -12139,6 +12257,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "402":
+          description: >-
+            The organization's plan does not include SCIM provisioning, so no ScimToken is issued. Reported with code
+            `plan_upgrade_required`; upgrade to the Enterprise plan to proceed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: plan_upgrade_required
+                  message: SCIM provisioning requires the Enterprise plan.
+                  request_id: 018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f
         "403":
           description: The session's Member does not hold roles:manage.
           content:
@@ -12237,6 +12368,14 @@ paths:
             application/scim+json:
               schema:
                 $ref: "#/components/schemas/ScimError"
+        "403":
+          description: >-
+            The organization's plan does not include SCIM provisioning
+            (Enterprise plan refusal). Nothing is read or changed.
+          content:
+            application/scim+json:
+              schema:
+                $ref: "#/components/schemas/ScimError"
         "409":
           description: >-
             The organization has no available seat, so no Member was
@@ -12277,6 +12416,14 @@ paths:
             application/scim+json:
               schema:
                 $ref: "#/components/schemas/ScimError"
+        "403":
+          description: >-
+            The organization's plan does not include SCIM provisioning
+            (Enterprise plan refusal). Nothing is read or changed.
+          content:
+            application/scim+json:
+              schema:
+                $ref: "#/components/schemas/ScimError"
 
   /scim/v2/Users/{user_id}:
     get:
@@ -12304,6 +12451,14 @@ paths:
                 $ref: "#/components/schemas/ScimUser"
         "401":
           description: Missing or invalid ScimToken.
+          content:
+            application/scim+json:
+              schema:
+                $ref: "#/components/schemas/ScimError"
+        "403":
+          description: >-
+            The organization's plan does not include SCIM provisioning
+            (Enterprise plan refusal). Nothing is read or changed.
           content:
             application/scim+json:
               schema:
@@ -19661,6 +19816,13 @@ components:
           description: >-
             Must name a price attached to plan_version_id. Required
             separately because a plan version may carry several prices.
+        payment_method_id:
+          type: string
+          description: >-
+            Required only when this change activates gateway billing for
+            the first time (the Subscription was never billed at the
+            gateway, for example a move off the free plan); omitted
+            otherwise.
 
     CheckoutRequest:
       type: object

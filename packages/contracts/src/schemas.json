@@ -6576,6 +6576,10 @@
       "price_id": {
         "type": "string",
         "description": "Must name a price attached to plan_version_id. Required separately because a plan version may carry several prices."
+      },
+      "payment_method_id": {
+        "type": "string",
+        "description": "Required only when this change activates gateway billing for the first time (the Subscription was never billed at the gateway, for example a move off the free plan); omitted otherwise."
       }
     }
   },
