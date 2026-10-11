@@ -1,5 +1,11 @@
 # @rollfuse/contracts
 
+## 0.8.15
+
+### Patch Changes
+
+- f256818: Sync openapi.yaml with rollfuse/rollfuse's gate-identity-features-on-enterprise change: issueScimToken, configureIdentityProvider and completeLogin document 402 `plan_upgrade_required` and 503 `plan_check_unavailable`; provisionScimUser documents a SCIM 403 and 503; configureIdentityProvider documents 401; `ChangePlanRequest.payment_method_id`.
+
 ## 0.8.14
 
 ### Patch Changes
