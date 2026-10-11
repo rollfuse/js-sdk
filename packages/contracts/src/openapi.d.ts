@@ -502,7 +502,7 @@ export interface paths {
          *
          *     A flag evaluated within the last 24 hours may still be receiving traffic; deleting it is refused with feature_flag_delete_requires_confirmation unless confirm=true is passed, since clients still evaluating it will fall back once it is gone. This warning is separate from, and does not override, the dependents refusal above.
          *
-         *     A feature flag whose owning project belongs to another Organization is rejected identically to an unknown feature flag id.
+         *     The feature flag must belong to the project named in the path. A feature flag of another project, in the caller's Organization or another, is rejected identically to an unknown feature flag id, before the dependents and recent-evaluation checks, and nothing is deleted.
          */
         delete: operations["deleteFeatureFlag"];
         options?: never;
@@ -533,7 +533,9 @@ export interface paths {
          *
          *     Archiving is a soft delete: the feature flag, its variations, its exposure events and its experiments all remain intact and readable. It records archived_at, releases the flag's feature_flag entitlement allocation so the slot is immediately reusable, and disables (enabled=false) every environment flag configuration referencing it. The flag's key stays permanently reserved within its project — a new flag can never reuse it.
          *
-         *     A feature flag whose owning project belongs to another Organization is rejected identically to an unknown feature flag id.
+         *     Archiving is refused with feature_flag_has_dependents, naming them, while another feature flag declares this one as a prerequisite.
+         *
+         *     The feature flag must belong to the project named in the path. A feature flag of another project, in the caller's Organization or another, is rejected identically to an unknown feature flag id, before the prerequisite check, and nothing changes.
          */
         post: operations["archiveFeatureFlag"];
         delete?: never;
@@ -558,6 +560,8 @@ export interface paths {
          *     Unarchiving clears archived_at only after the same synchronous feature_flag entitlement check-and-allocate a creation goes through succeeds, so it is rejected when the Organization has no free slot at that moment (it downgraded, or filled the freed slot with another flag); the feature flag then remains archived.
          *
          *     Unarchiving does not resume targeting: the environment flag configurations archiving disabled stay disabled until an operator re-enables each one explicitly.
+         *
+         *     The feature flag must belong to the project named in the path. A feature flag of another project, in the caller's Organization or another, is rejected identically to an unknown feature flag id, and nothing changes.
          */
         post: operations["unarchiveFeatureFlag"];
         delete?: never;
@@ -1919,6 +1923,8 @@ export interface paths {
         /**
          * Delete a metric definition
          * @description Requires a session for a Member holding metrics:manage. Deletion is permanent and distinct from archive, which remains the reversible option. Refused with metric_definition_has_dependents, naming every one, when a Guardrail or Connector still references the definition.
+         *
+         *     The metric definition must belong to the project named in the path. A metric definition of another project, in the caller's Organization or another, is rejected identically to an unknown metric definition id, before the dependents check, and nothing is deleted.
          */
         delete: operations["deleteMetricDefinition"];
         options?: never;
@@ -1926,6 +1932,8 @@ export interface paths {
         /**
          * Rename and/or redescribe a metric definition
          * @description Requires a session for a Member holding metrics:manage. Updates the definition's name and description. Its key is immutable after creation.
+         *
+         *     The metric definition must belong to the project named in the path. A metric definition of another project, in the caller's Organization or another, is rejected identically to an unknown metric definition id, and nothing changes.
          */
         patch: operations["renameMetricDefinition"];
         trace?: never;
@@ -1942,6 +1950,8 @@ export interface paths {
         /**
          * Archive a metric definition
          * @description Requires a session for a Member holding metrics:manage. Archiving stops the definition being offered for new use, but every existing Guardrail, Connector or Observation referencing it continues to resolve. Nothing is deleted.
+         *
+         *     The metric definition must belong to the project named in the path. A metric definition of another project, in the caller's Organization or another, is rejected identically to an unknown metric definition id, and nothing changes.
          */
         post: operations["archiveMetricDefinition"];
         delete?: never;
@@ -5660,6 +5670,8 @@ export interface components {
             plan_version_id: string;
             /** @description Must name a price attached to plan_version_id. Required separately because a plan version may carry several prices. */
             price_id: string;
+            /** @description Required only when this change activates gateway billing for the first time (the Subscription was never billed at the gateway, for example a move off the free plan); omitted otherwise. */
+            payment_method_id?: string;
         };
         CheckoutRequest: {
             plan_version_id: string;
@@ -8017,7 +8029,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Feature flag was not found (or belongs to a different project or Organization). */
+            /** @description Feature flag was not found, or it does not belong to the project in the path (a sibling project of the same Organization or a project of another Organization). Every case gets this identical response and nothing is deleted. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -8193,7 +8205,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Feature flag was not found (or belongs to another Organization). */
+            /** @description Feature flag was not found, or it does not belong to the project in the path (a sibling project of the same Organization or a project of another Organization). Every case gets this identical response and the flag stays active. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -8211,21 +8223,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The feature flag is already archived. */
+            /** @description Either the feature flag is already archived (feature_flag_already_archived), or another feature flag declares it as a prerequisite (feature_flag_has_dependents, naming every one of them). */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "error": {
-                     *         "code": "feature_flag_already_archived",
-                     *         "message": "This feature flag is already archived.",
-                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
-                     *       }
-                     *     }
-                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -8286,7 +8289,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Feature flag was not found (or belongs to another Organization). */
+            /** @description Feature flag was not found, or it does not belong to the project in the path (a sibling project of the same Organization or a project of another Organization). Every case gets this identical response and the flag stays archived. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -14953,12 +14956,21 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Metric definition was not found. */
+            /** @description Metric definition was not found, or it does not belong to the project in the path (a sibling project of the same Organization or a project of another Organization). Every case gets this identical response and nothing is deleted. */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "metric_definition_not_found",
+                     *         "message": "Metric definition or environment was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -15034,12 +15046,21 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Metric definition was not found. */
+            /** @description Metric definition was not found, or it does not belong to the project in the path (a sibling project of the same Organization or a project of another Organization). Every case gets this identical response and the name is unchanged. */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "metric_definition_not_found",
+                     *         "message": "Metric definition or environment was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -15082,12 +15103,21 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Metric definition was not found. */
+            /** @description Metric definition was not found, or it does not belong to the project in the path (a sibling project of the same Organization or a project of another Organization). Every case gets this identical response and the definition stays active. */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "metric_definition_not_found",
+                     *         "message": "Metric definition or environment was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -16294,6 +16324,42 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description The request does not carry the credentials this endpoint requires. Reported with code `identity_provider_auth_required`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "identity_provider_auth_required",
+                     *         "message": "A valid bootstrap credential or an authenticated session with organizations:manage is required.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization's plan does not include single sign-on. Reported with code `plan_upgrade_required`; upgrade to the Enterprise plan to proceed. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "plan_upgrade_required",
+                     *         "message": "SSO for members beyond the founding admin, and identity provider configuration through a session, are on the Enterprise plan. Upgrade at /billing/plans, then try again.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description The organization was not found. */
             404: {
                 headers: {
@@ -16305,6 +16371,24 @@ export interface operations {
                      *       "error": {
                      *         "code": "organization_not_found",
                      *         "message": "Organization was not found.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization's plan could not be read, so nothing was changed. Reported with code `plan_check_unavailable`; retry shortly. This is not a plan refusal. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "plan_check_unavailable",
+                     *         "message": "Your organization's plan could not be checked right now. Nothing was changed. Try again in a moment.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -16560,6 +16644,24 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description The organization's plan does not include single sign-on for a further Member: the identity has no Member yet and the organization already has one, so just-in-time provisioning is refused and no Member or Session is created. The founding Member and existing Members are unaffected. Reported with code `plan_upgrade_required`; upgrade to the Enterprise plan to proceed. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "plan_upgrade_required",
+                     *         "message": "SSO for members beyond the founding admin, and identity provider configuration through a session, are on the Enterprise plan. Upgrade at /billing/plans, then try again.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description The authenticated identity has no Member yet and the organization has no available seat, so just-in-time provisioning was refused and no Member was created. Reported distinctly from the 401 above because the login is retryable once a seat is freed or the plan is upgraded. An already-provisioned Member signing in again is unaffected. */
             409: {
                 headers: {
@@ -16571,6 +16673,24 @@ export interface operations {
                      *       "error": {
                      *         "code": "seat_limit_exceeded",
                      *         "message": "This organization has no available seats. Free up a seat or upgrade the plan, then try again.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization's plan could not be read, so nothing was changed. Reported with code `plan_check_unavailable`; retry shortly. This is not a plan refusal. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "plan_check_unavailable",
+                     *         "message": "Your organization's plan could not be checked right now. Nothing was changed. Try again in a moment.",
                      *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
                      *       }
                      *     }
@@ -18481,6 +18601,24 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description The organization's plan does not include SCIM provisioning, so no ScimToken is issued. Reported with code `plan_upgrade_required`; upgrade to the Enterprise plan to proceed. */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "plan_upgrade_required",
+                     *         "message": "SCIM provisioning is on the Enterprise plan. Choose the Enterprise plan at /billing/plans to issue a SCIM token.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description The session's Member does not hold roles:manage. */
             403: {
                 headers: {
@@ -18496,6 +18634,24 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization's plan could not be read, so nothing was changed. Reported with code `plan_check_unavailable`; retry shortly. This is not a plan refusal. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "plan_check_unavailable",
+                     *         "message": "The organization's plan could not be checked. Retry in a moment.",
+                     *         "request_id": "018f2f3a-6f4f-7b3e-9c3a-1f2b3c4d5e6f"
+                     *       }
+                     *     }
+                     */
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
@@ -18630,8 +18786,26 @@ export interface operations {
                     "application/scim+json": components["schemas"]["ScimError"];
                 };
             };
+            /** @description The organization's plan does not include SCIM provisioning (Enterprise plan refusal). Nothing is created. The detail reads "SCIM provisioning requires the Enterprise plan. Move this organization to the Enterprise plan, then retry." */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": components["schemas"]["ScimError"];
+                };
+            };
             /** @description The organization has no available seat, so no Member was created. Retrying succeeds once a seat is freed (a Member is deactivated) or the plan is upgraded. Re-provisioning an externalId that already has a Member is unaffected: it reuses that Member and consumes no additional seat. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/scim+json": components["schemas"]["ScimError"];
+                };
+            };
+            /** @description The organization's plan could not be read, so nothing was created. The detail reads "The organization's plan could not be checked, so the request was not applied. Retry in a moment." Retry shortly; this is not a plan refusal. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
