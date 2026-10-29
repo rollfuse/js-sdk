@@ -21,7 +21,7 @@
     "check-workspace-ranges": "node scripts/check-workspace-ranges.mjs"
   },
   "devDependencies": {
-    "@changesets/cli": "^3.0.1",
+    "@changesets/cli": "^3.0.3",
     "semver": "^7.7.3"
   }
 }
